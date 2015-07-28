@@ -1,0 +1,46 @@
+as12345_bgp
+[r1][r2-r7]
+
+[r1]
+router bgp 12345
+bgp log-neighbor-changes
+no bgp default ipv4-unicast
+bgp router-id 123.1.1.1
+
+#r1用peer group配IBGP邻居，名字为iBGP
+neighbor iBGP peer-group
+neighbor iBGP remote-as 12345
+neighbor iBGP update-source lo 0
+
+#r4,r5不跑bgp
+neighbor 123.2.2.2 peer-group iBGP
+neighbor 123.3.3.3 peer-group iBGP
+neighbor 123.6.6.6 peer-group iBGP
+neighbor 123.7.7.7 peer-group iBGP
+
+address-family ipv4
+neighbor 123.2.2.2 activate
+neighbor 123.3.3.3 activate
+neighbor 123.6.6.6 activate
+neighbor 123.7.7.7 activate
+
+#r1为as12345多RR(route reflector)
+neighbor iBGP route-reflector-client
+exit
+
+[r2]
+router bgp 12345
+bgp log-neighbor-changes
+no bgp default ipv4-unicast
+bgp router-id 123.2.2.2
+
+neighbor 123.1.1.1 remote-as 12345
+neighbor 123.1.1.1 update-source lo 0
+
+address-family ipv4
+neighbor 123.1.1.1 activate
+exit
+
+[r3]
+[r6]
+[r7]

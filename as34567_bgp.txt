@@ -1,0 +1,53 @@
+as34567_bgp
+
+[r8-r11][r9,r11]
+
+[r8]
+router bgp 34567
+no bgp default ipv4-unicast
+bgp router-id 123.8.8.8
+
+#neighbor 123.8.8.8 remote-as 34567
+neighbor 123.9.9.9 remote-as 34567
+neighbor 123.10.10.10 remote-as 34567
+neighbor 123.11.11.11 remote-as 34567
+
+address-family ipv4
+#neighbor 123.8.8.8 activate
+neighbor 123.9.9.9 activate
+neighbor 123.10.10.10 activate
+neighbor 123.11.11.11 activate
+
+#neighbor 123.8.8.8 next-hop-self
+neighbor 123.9.9.9 next-hop-self
+neighbor 123.10.10.10 next-hop-self
+neighbor 123.11.11.11 next-hop-self
+
+exit
+
+[r9]
+router bgp 34567
+
+＃配出口
+neighbor 30.34.1.1 remote-as 30000
+address-family ipv4
+neighbor 30.34.1.1 activate
+exit
+
+＃r11为400，r9是默认出口，r11是备份出口
+bgp default local-preference 500
+
+exit
+
+router eigrp 34567
+＃bgp的路由注入eigrp，b2e为筛选条件
+redistribute bgp 34567 metric 10000 100 255 1 1500 route-map b2e
+
+＃default只允许0.0.0.0默认路由，因此自由默认路由被注入eigrp
+ip prefix-list default permit 0.0.0.0/0
+
+＃b2e筛选条件需要符合default
+route-map b2e permit 10
+match ip address prefix default
+
+exit

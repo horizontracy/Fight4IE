@@ -1,0 +1,64 @@
+as45678_bgp
+
+[r15][r16-r19][r18-r19]
+
+[r15]
+router bgp 45678
+no bgp default ipv4-unicast
+bgp router-id 123.15.15.15
+
+#不配r16和r17，as45678没有ibgp邻居关系
+#neighbor 123.16.16.16 remote-as 45678
+#neighbor 123.16.16.16 remote-as 45678
+#address-family ipv4
+#neighbor 123.16.16.16 activate
+#neighbor 123.17.17.17 activate
+#exit
+
+＃r15和as10003建立ebgp邻居
+neighbor 103.45.1.1 remote-as 10003
+address-family ipv4
+neighbor 103.45.1.1 activate
+exit
+
+#重分发eigrp进bgp
+address-family ipv4
+redistribute eigrp
+exit
+
+#抑制细路由通告
+aggregate-address 123.20.1.0 255.255.255.0 summary-only
+exit
+
+#重分发eigrp进bgp
+router eigrp cisco
+address-family ipv4 autonomous-system 45678
+topology base
+redistribute bgp 45678 metric 10000 100 255 1 1500
+exit
+exit
+exit
+
+[r16]
+router bgp 45678
+no bgp default ipv4-unicast
+bgp router-id 123.16.16.16
+
+＃r16从20003学默认路由
+neighbor 203.45.16.1 remote-as 20003
+address-family ipv4
+neighbor 203.45.16.1 activate
+exit
+
+#r16用eigrp学到的默认路由作为自己路由表中的默认路由
+address-family ipv4
+network 0.0.0.0 backdoor
+exit
+
+exit
+
+[r18]
+#r17不向r18发送eigrp查询
+router bgp 652222
+eigrp stub
+exit

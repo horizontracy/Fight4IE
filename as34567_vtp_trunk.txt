@@ -1,0 +1,17 @@
+as34567_vtp_trunk
+
+[sw3-sw4]
+
+[sw3]
+vtp mode transparent
+vtp domain CCIE
+vtp version 2
+vtp password CCIErock$
+
+int range e2/0-3
+switchport trunk encap dot
+switchport mode trunk
+exit
+
+mac address-table aging-time 7200
+

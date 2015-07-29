@@ -1,0 +1,8 @@
+as65222_ppp
+
+[r18-r19]
+encap ppp
+int s1/0
+ppp chap hostname ACME_R18
+ppp chap password ccie
+exit

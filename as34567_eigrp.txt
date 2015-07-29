@@ -1,0 +1,15 @@
+as34567_eigrp
+
+[r8-r11][sw3-sw4]
+
+[r8]
+router eigrp 34567
+router-id 123.8.8.8
+network 123.0.0.0 0.255.255.255
+no auto-summary
+exit
+
+[sw3]
+int vlan 34
+delay 100
+exit

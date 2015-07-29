@@ -1,0 +1,11 @@
+as12345_34567_stp
+
+[sw1-sw4]
+
+[sw1]
+spanning-tree mode rapid-pvst
+spanning-tree vlan [odd] priority 0
+spanning-tree vlan [even] priority 4096
+spanning-tree portfast default
+spanning-tree portfast bpduguard default
+spanning-tree p

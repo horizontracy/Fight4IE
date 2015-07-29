@@ -1,0 +1,32 @@
+as45678_eigrp
+
+[r15-r17][r18-r19][sw5-sw6]
+
+[r15]
+router eigrp cisco
+
+address-family ipv4 autonomous-system 45678
+network 123.0.0.0 0.255.255.255
+topology base
+no auto-summary
+exit
+
+exit
+
+
+[r18]
+router eigrp 45678
+router-id 123.18.18.18
+network 123.0.0.0 0.255.255.255
+no auto-summary
+exit
+exit
+
+[sw5]
+#why need sw5 network?
+router eigrp 45678
+network 123.0.0.0 0.255.255.255
+no auto-summary
+exit
+
+

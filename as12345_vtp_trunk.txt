@@ -1,0 +1,27 @@
+as12345_vtp_trunk
+
+[sw1-sw2]
+
+[sw1]
+vtp version 2
+vtp mode server
+vtp domain CCIE
+vtp password CCIErock$
+
+int range e2/0-3
+switchport trunk encap dot
+switchport mode trunk
+exit
+
+[sw2]
+vtp version 2
+vtp mode client
+vtp domain CCIE
+vtp password CCIErock$
+
+int range e2/0-3
+switchport trunk encap dot
+switchport mode trunk
+exit
+
+mac address-table aging-time 7200

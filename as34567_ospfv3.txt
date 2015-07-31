@@ -1,0 +1,40 @@
+as34567_ospfv3
+
+[sw3-sw4][r10-r11]
+
+[sw3]
+ipv6 unicast-routing
+ipv6 router ospf 1
+router-id 123.203.3.3
+
+int vlan 34
+ipv6 ospf 1 area 0
+exit
+int lo 0
+ipv6 ospf 1 area 0
+exit
+int vlan 310
+ipv6 ospf 1 area 10
+exit
+
+int vlan 34
+ipv6 ospf priority 254
+exit
+
+exit
+
+[r10]
+ipv6 unicast-routing
+ipv6 router ospf 1
+
+router-id 123.10.10.10
+
+int vlan 310
+ipv6 ospf 1 area 10
+exit
+
+exit
+
+[sw3]
+#
+clear ipv6 ospf process

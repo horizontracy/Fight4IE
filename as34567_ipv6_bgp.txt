@@ -1,0 +1,36 @@
+as34567_ipv6_bgp
+
+[r10,r11][r12,r14]
+
+[r10]
+#什么意思？
+ipv6 unicast-routing
+
+#r10和as20001跑bgp，ipv6与ipv4的配置方法一样
+router bgp 34567
+neighbor <ipv6_addr> remote-as 20001
+address-family ipv6
+neighbor <ipv6_addr> activate
+exit
+
+address-family ipv6
+#为什么重分发ospfv3进bgp？
+redistribute ospf 1 match internal external
+exit
+
+exit
+
+ipv6 router ospf 1 
+#为什么重分发bgp进ospf？
+redistribute bgp 34567
+exit
+
+[r12]
+
+
+
+
+
+
+
+

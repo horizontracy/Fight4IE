@@ -1,6 +1,13 @@
 as34567_ipv6_bgp
 
 [r10,r11][r12,r14]
+1. as12345配bgp
+
+2. r1配成route reflector
+
+3. 
+
+
 
 [r10]
 #什么意思？

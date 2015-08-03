@@ -1,6 +1,29 @@
 as34567_bgp
 
 [r8-r11][r9,r11]
+题目
+1. r8 r9 r10 r11 建立bgp
+[检查]在r8上看bgp邻居看得到r9-r11，r9-r11同
+
+2. 所有ebgp下一跳通过IGP可达
+[解法]需要在每一个PE上配next-hop-self
+
+3. r9是默认出口，r11是备份出口
+[解法]配local-preference
+
+4. r9 r11从ebgp收默认路由，且只有默认路由被注入eigrp
+[解法]
+1)bgp重分发进eigrp，注意要配metric、mtu等，且按照名字为b2e的route-map进行过滤
+2)配route-map b2e，过滤需要匹配前缀列表default
+3)配前缀列表default，只允许默认路由0.0.0.0/0
+
+5. 只有r9在路由表里会看到来自bgp的默认路由，AS34567内其它设备从eigrp学到默认路由
+[检查]sh ip route，r9看到via bgp，其他看到via eigrp
+
+6. 不可用network命令
+
+7. 在4台路由器上重分发eigrp进bgp
+[解法]在r8-r11上重分发eigrp进bgp
 
 [r8]
 router bgp 34567

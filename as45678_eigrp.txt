@@ -1,6 +1,17 @@
 as45678_eigrp
 
 [r15-r17][r18-r19][sw5-sw6]
+题目
+1. AS 45678跑eigrp 45678
+r18 r19跑eigrp 45678，一旦DMVPN起来了要和r17起邻居
+[解法]r15-r19建立eigrp邻居，dmvpn起来前，r15-r17能看到邻居关系，r18-r19看不到
+[检查]
+
+2. sw5 sw6把SVI的路由通告进45678
+[解法]
+
+3. r15 r16 r17支持64位eigrp metric
+[解法]r15-r17用命名形式配eigrp，sw5-sw6和r18-r19用数字形式配eigrp
 
 [r15]
 router eigrp cisco

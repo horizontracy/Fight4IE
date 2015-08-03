@@ -1,5 +1,12 @@
 as12345_bgp
 [r1][r2-r7]
+题目
+1. r1和r2,r3,r6,r7建立bgp邻居，r1是路由反射器
+[检查] 
+在r1上sh ip bgp neighbor能看到r2,r3,r6,r7的邻居关系，r2-r7只能看到r1
+在r1上sh run | se bgp能看到路由反射器的配置
+2. 用peer group配IBGP邻居，名字为iBGP
+3. 不通告任何路由进bgp
 
 [r1]
 router bgp 12345

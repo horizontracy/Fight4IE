@@ -1,0 +1,143 @@
+题目
+1. r20上，用户在ssh或console连上设备时看到信息：“Caution!No unauthorized access!”
+[解法]banner login ##
+	
+2. sw3上e0/0-3不允许任何非法设备接入
+每个接口上只允许1个mac地址
+mac地址被自动绑定到端口上
+如果收到任何非法数据帧，接口进入error-disable状态
+[解法]
+	1)不允许非法接入：switchport port-security
+	2)每个接口上只允许1个mac地址：maximum 1
+	3)mac绑定：mac-address sticky
+	4)非法接入disable：violation shutdown
+
+3. r20上配ssh
+	username: test
+	password: test
+	privilege: 1
+	next session: 5
+	不要启用aaa
+	只有123.10.2.0/24用户可以访问
+	用标准访问列表，只能ssh连设备
+	任何ssh都要产生日志
+[解法]
+	1)username/password/privilege：username test privilege 1 password test
+	2)next session 5: ip ssh max.. 5?
+	3)任何ssh都要产生日志：ip ssh logging events
+	3)ssh加密：crypto key generate rsa, 768
+	4)只有123.10.2.0/24用户可以ssh访问：line vty配置
+		ssh访问：transport input ssh
+		访问控制列表：access-list 1 permit 123.10.2.0 0.0.0.255
+[检查]sw3上测ssh
+	sw3# ssh -l test 123.20.20.20
+	1)能看到“Caution!No unauthorized access!”
+	2)r20上有ssh log
+		
+4. r20 nat INET
+	1) 10.1.0.0/16 和 10.2.0.0/16通过公网访问internet(AS 34567)
+	2) 用r20的loopback 0地址作为源地址，允许多个并发的连接，用标准访问列表
+	3) 要求r12-r14以及r18-r19:
+		trace 1.2.3.4 source e0/0时被r20翻译
+		trace 1.2.3.4 source loopback 0 时不被r20翻译 
+[解法]
+	1)建立访问控制列表：
+		access-list 2 permit 10.1.0.0 0.0.255.255
+		access-list 2 permit 10.2.0.0 0.0.255.255
+	2)做nat：lo 0作为源地址，允许多个并发连接，用访问控制列表
+		ip nat inside source list 2 int lo 0 overload
+	3)r20 nat到INET：
+		int ex/x.99
+		ip nat outside
+		int x/x.vrf_number
+		ip nat inside
+[检查]
+	1)用as65112以及r18和r19的10网段ping通1.2.3.4
+	2)在r20上查看nat的配置
+	
+5. netflow
+	r15 ping r19
+	top talkers 1/10 on r17
+	in next 10 seconds sort-by bytes
+[检查]
+	1)用r15 ping r19，在r17上看流量
+	r17# sh ip flow top-talkers
+	能看到SrcIPaddress为r15，DstIPaddress为r19
+
+6. ntp
+	1) r10 r12 同sw3同步时间
+	2) r10 r12应该和sw3同步时钟，用loopback 0作为连接地址
+	   r10 r12用xxxx:xxxx...(ipv6地址和sw3同步)
+	3) sw3不能从r10 r12学到时钟信息
+	4) 用ntp v4
+[解法]
+	1)sw3为同步源：ntp master
+	2)lo 0作为连接地址：ntp source lo 0
+	3)用ipv6地址同步：ntp server [sw3 ipv6 address]
+[检查]
+	1)r10和r12上看ntp状态
+		#r10 sh ntp status
+	2)在sw3,r10,r12上查看ntp配置，确认使用loopback0做源
+	
+解法
+1. 
+[r20]
+banner login #Caution!No unauthorized access!#
+
+2.
+[sw3]
+int range e0/0-3
+switchport port-security
+switchport port-security mac-address sticky
+switchport port-security maximum 1
+switchport port-security violation shutdown
+
+3.
+[r20]
+username test privilege 1 password test
+ip ssh logging events
+ip ssh max session 5?
+crypto key generate rsa
+768
+
+line vty 0 4
+login local
+transport input ssh
+access-class 1 in
+access-list 1 permit 123.10.2.0 0.0.0.255
+
+4. 
+[r20]
+access-list 2 permit 10.1.0.0 0.0.255.255
+access-list 2 permit 10.2.0.0 0.0.255.255
+ip nat inside source list 2 int lo 0 overload
+int e1/0.99
+ip nat outside
+int e1/0.vrf_number #except 99
+ip nat inside
+int e1/1.99
+ip nat outside
+int e1/1.vrf_number #except 99
+ip nat inside
+
+5. 
+[r15]
+ip cef 
+int tunnel 0
+ip flow egress
+
+ip flow-top-talker
+sort-by bytes
+cache-timeout 10000
+top 10
+
+show ip flow top-talkers
+
+6. 
+[sw3]
+ntp master
+ntp source lo 0-3
+
+[r10,r12]
+ntp server 2001:123::3:3:3
+ntp source lo 0

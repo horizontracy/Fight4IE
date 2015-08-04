@@ -1,0 +1,14 @@
+题目
+1. as12345建立ospf邻居
+[检查]
+	1)看到所有as12345邻居关系
+		sh ip ospf neighbor
+	2)看到ospf路由表
+		sh ip route ospf
+		至少2台设备上看路由表，确认r1-r7的ospf路由都有r1-r7
+
+详解
+[r1-r7]
+router ospf 12345
+router-id 123.x.x.x
+network 123.0.0.0 0.255.255.255 area 0

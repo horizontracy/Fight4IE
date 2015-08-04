@@ -1,0 +1,98 @@
+题目
+1. vtp
+1)as12345 vtp
+	domain CCIE
+	password CCIErock$
+	sw1是server，sw2是client
+	version 2
+2)as34567 vtp
+	domain CCIE
+	password CCIErock$
+	mode transparent
+	version 2
+[检查]
+	1)检查vtp
+	  能看到vtp的version一致
+		sh vtp status
+		sh vtp password
+
+2. vlan和trunk
+1)as12345
+	vlan 14,15,23,24,35,46,57,67,999
+	e2/0-3 trunk(看拓扑图)
+	无用的接口划入vlan999且关闭
+2)as34567
+	vlan 34,38,310,49,411,999
+	e2/0-3 trunk(看拓扑图)
+	无用的接口划入vlan999且关闭
+[检查]
+	1)ping通直连设备，可以先配ospf和eigrp，如果其邻居正常，则2层没有问题
+	2)查看无用的接口是否划入vlan999
+		sh ip int br
+		sh int status
+	3)查看trunk是否起来
+		sh int trunk
+
+3. stp
+	1)stp只有3个端口状态
+	2)
+		sw1奇数vlan为根桥，偶数vlan为备份根桥
+		sw2偶数vlan为根桥，奇数vlan为备份根桥
+		所有access的接口无延迟进入转发状态
+		所有access的接口收到bpdu就要shutdown，no shutdown可以恢复
+	3)mac地址表的老化时间为2h
+[检查]
+	1)查看stp
+	  能看到protocol为rstp
+		sh spanning-tree
+	2)查看stp配置
+	  能看到mode,portfast,vlan priority
+		sh run | se spanning-tree
+	3)查看mac地址老化时间
+		sh mac address-table aging-time
+	
+4. ppp
+	1)r18,r19和as20003的连接用ppp封装
+	2)运营商使用chap方式认证
+		用户名为：ACME_R18、ACME_R19，密码为：ccie
+[检查]
+	1)r18,r19接口shutdown在no shutdown可以up并认证
+		
+解法
+1.
+[sw1-sw4]以sw1为例
+vtp version 2
+vtp mode server #sw2为client, sw3和sw4为transparent
+vtp domain CCIE 
+vtp password CCIErock$
+
+2. 
+[sw1-sw4]以sw1为例
+vlan 14,15,23,24,35,46,57,67,999
+int range e0/0-3 
+switchport trunk encap dot
+switchport mode trunk
+int e0/1
+sw acc vlan 14
+int e0/2
+sw acc vlan 15
+int x #没有使用的接口
+sw mode acc
+sw acc vlan 999
+shutdown
+
+3. 
+[sw1-sw4]以sw1为例
+spanning-tree mode rapid-pvst
+spanning-tree vlan 15,23,35,57,67,999 priority 0
+spanning-tree vlan 14,24,46 priority 4096
+spanning-tree portfast default
+spanning-tree portfast bpduguard default
+
+mac address-table aging-time 7200
+
+4. 
+[r18,r19]以r18为例
+encap ppp
+ppp chap hostname ACME_R18
+ppp chap password ccie

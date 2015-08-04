@@ -1,0 +1,47 @@
+题目
+1. as34567跑eigrp
+	1)r8到r11做负载均衡
+	[解法]vlan34 delay 100
+
+2. as45678跑eigrp
+	1)r15-r17支持64位metric
+	[解法]用命名形式配
+	2)r18-r19不收eigrp查询
+	[解法]r18-r19配eigrp stub
+
+[检查]
+1.
+	1)查eigrp邻居，确认邻居都有，r8-r11和sw3-sw4
+		sh ip eigrp neighbor
+	2)至少在2台设备上查看eigrp路由表，确认eigrp路由都有
+		sh ip route eigrp
+	3)在r8和r9上查看路由表信息，确认负载均衡
+2. 
+	1)在r15-r17上查看eigrp邻居关系，能看到r16-r17和sw5-sw6
+		sh ip eigrp neighbor
+	
+详解
+1.
+[r8-r11,sw3-sw4]
+router eigrp 34567
+router-id 123.x.x.x
+network 123.0.0.0 255.0.0.0
+no auto-summary
+
+[sw3-sw4]
+int vlan 34
+delay 100
+
+2. 
+[r15-r17]
+router eigrp cisco
+address-family ipv4 autonomous-system 45678
+network 123.0.0.0 255.0.0.0
+topology base
+no auto-summary
+
+[r18-r19]
+router eigrp 45678
+network 123.18.18.18
+no auto-summary
+eigrp stub

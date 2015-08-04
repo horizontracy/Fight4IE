@@ -1,0 +1,213 @@
+题目
+1. as12345配bgp
+	1)r2,r3,r6,r7跑bgp，r4-r5不跑bgp
+	2)r1成为路由反射器
+	3)r2,r3,r6,r7用peer group配，名字为iBGP
+	4)PE和和as10001、as10002、as20001、as20002建立bgp邻居
+[解法]注意as20001只在GREEN/BLUE/INET下宣告，as20002只在BLUE/RED/INET下宣告
+[检查]
+	1)在r1上查看bgp邻居关系，有r2,r3,r6,r7
+		sh ip bgp summary
+	2)在r1上查看bgp配置，确认配置了路由反射器
+		sh run | begin r b
+		或者 sh run | se bgp
+
+2. as65112
+	1)r2,r3配5个vrf口朝向r20，GREEN/BLUE/RED/YELLOW/INET
+	2)r2,r3分别在5个vrf口下与r20建立bgp邻居
+	3)r20在ipv4口下与r2,r3建立bgp邻居
+	4)宣告10网段和123网段
+	5)抑制10网段和123网段的细路由
+[检查]
+	1)r20上查看邻居关系，能看到r2和r3的vrf口的邻居
+		sh ip bgp summary
+	2)r20上查看汇总路由和细路由宣告结果
+	  能看到10网段和123网段的下一跳为0.0.0.0
+		sh ip bgp
+	3)r20上看默认路由配置
+	  能看到除了INET(99)以外的vrf口都做了default originate
+		sh run | b r b
+	
+3. as34567配bgp
+	1)全路径
+	2)所有IBGP下一跳可达
+	3)r9和r11从as30000只收默认路由，重分发进eigrp
+	  r9是默认出口，r11是备份出口
+	4)PE和和as10001、as10002、as20001、as20002建立bgp邻居
+[检查]
+	1)任意3台设备上查看bgp邻居
+	  要能看到其他3台设备和EBGP邻居(例如as10001)
+		sh ip bgp summary
+	2)检查路由表，确认路由都优先r9
+		sh ip bgp
+	3)r8,r10,r11查看默认路由，确认是eigrp路由，r9的默认路由是bgp路由
+	  r8,r10,r11能看到via eigrp 34567，r9是via bgp 34567
+		sh ip route 0.0.0.0
+	4)r11上查看EBGP路由表，能看到next-hop as30000的路由
+		sh ip bgp
+	
+4. as45678配bgp
+	1)as45678配bgp没有IBGP
+	2)r15双向重分发
+	3)r15在bgp上汇总路由为123.20.1.0/24，抑制细路由
+	4)r16-r19默认走eigrp，bgp作为备份
+	5)PE和和as10003、as20003建立bgp邻居
+[检查]
+	1)在r16-r19上查看EBGP邻居关系和默认路由
+	  能看到r16-r19的bgp邻居关系，默认路由是从eigrp学到的
+		sh ip bgp vpnv4 unicast all summary
+		sh ip route 0.0.0.0
+	2)在r15上查看双向重分发的配置
+		sh run | se eigrp
+		sh run | se bgp
+	
+详解
+1. 
+[r1]
+router bgp 12345
+no bgp default ipv4-unicast
+bgp router-id 123.1.1.1
+bgp log-neighbor-changes
+
+neighbor iBGP peer-group
+neighbor iBGP remote-as 12345
+neighbor iBGP update-source lo 0
+
+neighbor 123.2.2.2 peer-group iBGP
+neighbor 123.3.3.3 peer-group iBGP
+neighbor 123.6.6.6 peer-group iBGP
+neighbor 123.7.7.7 peer-group iBGP
+address-family ipv4
+neighbor 123.2.2.2 activate
+neighbor 123.3.3.3 activate
+neighbor 123.6.6.6 activate
+neighbor 123.7.7.7 activate
+neighbor iBGP route-reflector-client
+
+neighbor 101.123.1.1 remote-as 10001
+address-family ipv4
+neighbor 101.123.1.1 activate
+
+[r2,r3,r6,r7]
+routr bgp 12345
+no bgp default ipv4-unicast
+bgp router-id 123.x.x.x
+bgp log-neighbor-changes
+
+neighbor 123.1.1.1 remote-as 12345
+neighbor 123.1.1.1 update-source lo 0
+address-family ipv4
+neighbor 123.1.1.1 activate
+
+neighbor 102.123.1.1 remote-as 10002
+address-family ipv4
+neighbor 102.123.1.1 activate
+
+2.
+[r2,r3]
+ip vrf vrf_id
+rd vrf_number:vrf_number
+route-target vrf_number:vrf_number
+
+int e1/0
+no shutdown
+int e1/0.vrf_number
+ip address 10.201.vrf_number.1 mask 255.255.255.252
+ip vrf forwarding vrf_id
+encap dot vrf_number
+
+router bgp 12345
+neighbor 10.201.vrf_number.2 remote-as 65112
+address-family ipv4 vrf vrf_id
+neighbor 10.201.vrf_number.2 activate
+
+[r20]
+int e1/0
+no shutdown
+int e1/0.vrf_number
+ip address 10.201.vrf_number.2 mask 255.255.255.252
+ip vrf forwarding vrf_id
+encap dot vrf_number
+int e1/1
+no shutdown
+int e1/1.vrf_number
+ip address 10.201.vrf_number.6
+ip vrf forwarding vrf_id
+encap dot vrf_number
+
+router bgp 65112
+no bgp default ipv4-unicast
+bgp router-id 123.20.20.20
+neighbor 10.201.vrf_number.1 remote-as 12345
+neighbor 10.201.vrf_number.5 remote-as 12345
+address-family ipv4
+neighbor 10.201.vrf_number.1 activate
+neighbor 10.201.vrf_number.5 activate
+neighbor 10.201.vrf_number.1 default-originate #except 99
+neighbor 10.201.vrf_number.1 default-originate #except 99
+
+network 123.20.20.20 mask 255.255.255.255
+network 10.20.1.0 255.255.255.0
+network 10.20.2.0 255.255.255.0
+
+aggregate-address 10.0.0.0 mask 255.0.0.0 summary-only
+aggregate-address 123.0.0.0 mask 255.0.0.0 summary-only
+
+3. 
+[r8-r11]以r8为例
+router bgp 34567
+no bgp default ipv4-unicast
+bgp router-id 123.8.8.8
+
+neighbor 123.9.9.9 remote-as 34567
+neighbor 123.10.10.10 remote-as 34567
+neighbor 123.11.11.11 remote-as 34567
+neighbor 123.9.9.9 update-source lo 0
+neighbor 123.10.10.10 update-source lo 0
+neighbor 123.11.11.11 update-source lo 0
+address-family ipv4
+neighbor 123.9.9.9 activate
+neighbor 123.10.10.10 activate
+neighbor 123.11.11.11 activate
+neighbor 123.9.9.9 next-hop-self
+neighbor 123.10.10.10 next-hop-self
+neighbor 123.11.11.11 next-hop-self
+
+neighbor 101.34.1.1 remote-as 10001
+address-family ipv4
+neighbor 101.34.1.1 activate
+
+[r9-r11]以r9为例
+router bgp 34567
+bgp default local-preference 500 #r11为400
+
+router eigrp 34567
+redistribute bgp 34567 metric 10000 100 255 1 1500 route-map b2e
+
+route-map b2e permit 10
+ip match default internal external
+
+ip prefix-list default permit 0.0.0.0/0
+
+4. 
+[r15-r19]以r15为例
+router bgp 45678 #r18,r19的as号为65222
+no bgp default ipv4-unicast
+bgp router-id 123.x.x.x
+neighbor 103.45.1.1 remote-as 10003
+address-family ipv4
+neighbor 103.45.1.1 activate
+
+[r15]
+router bgp 45678
+redistribute eigrp 45678
+aggregate-address 123.20.1.0 mask 255.255.255.0 summary-only
+
+router eigrp cisco
+address-family ipv4 autonomous-system 45678
+topology base
+redistribute bgp 45678 metric 10000 100 255 1 1500
+
+[r16-r19]
+router bgp 45678 #r18,r19为65222
+network 0.0.0.0 backdoor

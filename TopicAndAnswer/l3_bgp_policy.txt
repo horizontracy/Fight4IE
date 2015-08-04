@@ -1,0 +1,18 @@
+题目
+1. as12345和as34567配bgp策略
+	1)as12345和as34567的PE只通告A类的123.0.0.0/8路由进ISP的INET的EBGP邻居
+	2)r13优先走as20002，as20001作为备份
+[解法]已经在bgp里做了，调整neighbor的weight
+[检查]
+	1)r2,r3,r6,r7,r8-r11上查看EBGP邻居、INET方向BGP策略配置
+	2)r13上查看路由选路
+	  能看到去as20002的路由的weight值为1000
+		sh ip bgp
+
+详解
+1. 
+[r2,r3,r6,r7,r8-r11]以r2为例
+ip prefix-list 123 permit 123.0.0.0/8 le 32
+router bgp 12345
+address-family ipv4 vrf INET
+neighbor 101.123.1.1 prefix 123 out

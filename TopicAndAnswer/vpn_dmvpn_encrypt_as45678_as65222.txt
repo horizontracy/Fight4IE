@@ -1,0 +1,105 @@
+题目
+1. 配DMVPN
+	1)r17是hub，r18,r19是spoke
+	[解法]
+		1)r17是nhs，nhrp配multicast dynamic
+		2)在r18和r19上配nhs为r17的serial口ip 203.45.17.2
+		3)r17-r18是以命名形式配的eigrp，需要在eigrp进程下关闭水平分割
+
+	2)r17,r18,r19使用tunnel口，其配置如下：
+		bandwitdth 1000
+		delay 10000ms
+		nhrp auth key 45678key
+		nhrp holdtime 5min
+		nhrp network-id 45678
+		mtu 1400
+		tcp mss 1360
+		disable icmp redirect
+	[解法]配nhrp map，做tunnel和ip的映射
+
+	3)r17-r19能够起来
+	[检查]检查eigrp邻居，需要把tunnel口宣告进eigrp
+
+	4)spoke之间可以直接建立隧道
+
+2. 配ipsec
+	1)phase1:
+		isakmp police 10
+		auth preshare-key CCIE
+		encrypting aes
+		group 2
+		
+	2)phase2:
+		esp-aes
+		transport mode
+		transform-set name CCIEXFORM
+		ipsec profile name DMVPNPROFILE
+
+[检查]
+	1)r18的e0/0能ping通r19的e0/0
+	2)在r18上sh ip nhrp，有spoke to spoke tunnel的动态映射
+	3)在r17-r19上查看tunnel口的配置
+		
+详解
+1.
+[r17]
+int tunnel 0
+ip address 10.18.19.1 255.255.255.0
+tunnel mode gre multipoint
+tunnel source s2/0
+tunnel key 45678
+
+ip nhrp network-id 45678
+ip nhrp auth 45678key
+ip nhrp map multicast dynamic
+ip nhrp holdtime 300
+ip nhrp redirect
+
+no ip redirects
+bandwidth 1000
+delay 1000
+ip mtu 1400
+ip tcp mss 1360
+
+router eigrp cisco
+topology base
+af-interface tunnel 0
+no split-horizon
+
+[r18,r19]以r18为例
+int tunnel 0
+ip address 10.18.19.18 255.255.255.0
+tunnel mode gre multipoint
+tunnel source s1/0
+tunnel key 45678
+
+ip nhrp network-id 45678
+ip nhrp auth 45678key
+ip nhrp map multicast 203.45.17.2
+ip nhrp map 10.18.19.1 203.45.17.2
+ip nhrp nhs 10.18.19.1
+ip nhrp shortcut
+ip nhrp holdtime 300
+
+no ip redirects
+bandwidth 1000
+delay 1000
+ip mtu 1400
+ip tcp mss 1360
+
+2.
+[r17-r19]phase1
+#phase1: isakmp
+crypto isakmp policy 10
+encrypt aes
+auth pre-share
+group 2
+crypto isakmp key CCIE address 0.0.0.0
+
+#phase2: ipsec
+crypto ipsec transform-set CCIEXFORM
+mode transport
+crypto ipsec profile DMVPNPROFILE
+set transform-set CCIEXFORM
+int tunnel 0
+tunnel protection ipsec profile DMVPNPROFILE

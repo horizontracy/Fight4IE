@@ -1,0 +1,45 @@
+题目
+1. as45678跑组播，源在sw5的vlan5里面
+[解法]
+	1)ip multicast-routing
+	2)跑组播的接口配ip pim sparse-mode
+
+2. r15的loopback是RP，用标准RP选举机制
+[解法]
+	1)r15的lo 0配ip pim sparse-mode
+	2)rp-candidate和bsr-candidate
+
+3. r18和r19的以太网口加入232.1.1.1，sw5可以ping通
+[解法]ip igmp join-group 232.1.1.1
+
+4. sw5中剩下的接口划入vlan5
+[解法]只是划入vlan5，不要shutdown
+
+[检查]
+	1)r15上查rp的状态：sh ip pim rp mapping
+	2)r15 ping通232.1.1.1
+
+详解
+[r15-r19,sw5,sw6]以r15为例
+ip multicast-routing
+int e0/1
+ip pim sparse-mode
+int e0/2
+ip pim sparse-mode
+
+[r15]
+int lo 0
+ip pim sparse-mode
+ip pim rp-candidate lo 0
+ip pim bsr-candidate lo 0
+
+[r18,r19]
+int tunnel 0
+ip pim sparse-mode
+int e0/0
+ip pim sparse-mode
+ip igmp join-group 232.1.1.1
+
+[sw5]
+int x #
+sw acc vlan 5

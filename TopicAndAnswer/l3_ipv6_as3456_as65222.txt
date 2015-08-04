@@ -1,0 +1,54 @@
+题目
+1. as34567中sw3-sw4和r10-r11跑ipv6 ospfv3
+	1)ospfv3进程号为1
+	2)r10,r11做bgp和eigrp的双向重分发
+	3)相应接口以及loopback需要划入相应的area(看图)
+	4)r10,r11在ipv6上配bgp和eigrp的双向重分发
+[检查]
+	1)r10和r11上查看ospfv3的路由表
+		sh ipv6 route ospf
+	2)r12的e0/0能ping通r14的e0/0	
+	
+2. r12,r13,r14配ipv6 bgp
+	1)r12,r13,r14和as20001、as20002建立bgp邻居
+	2)r13调整选路，优先as20002
+[检查]r12的e0/0能ping通r14的e0/0
+
+详解
+1.
+[sw3,sw4,r10,r11]以sw3为例
+ipv6 unicast-routing
+ipv6 router ospf 1
+router-id 123.x.x.x
+int lo 0
+ipv6 ospf 1 area 0
+int vlan 34
+ipv6 ospf 1 area 0
+int vlan 310
+ipv6 ospf 1 area 10
+
+[r10-r11]
+router bgp 34567
+address-family ipv6
+redistribute eigrp 34567
+
+router eigrp 34567
+address-family 34567
+redistribute bgp 34567 metric 10000 100 255 1 1500
+
+[r10,r11]以r10为例
+router bgp 34567
+neighbor [as20001 ipv6 address] remote-as 20001
+address-family ipv6
+neighbor [as20001 ipv6 address] activate
+
+2. 
+[r12-r14]以r12为例
+router bgp 65222
+neighbor [as20001 ipv6 address] remote-as 20001
+address-family ipv6
+neighbor [as20001 ipv6 address] activate
+
+[r13]
+router bgp 65222
+neighbor [as20002 ipv6 address] weight 1000

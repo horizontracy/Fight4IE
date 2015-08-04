@@ -1,0 +1,56 @@
+题目
+1. as12345配vpn
+	1)as12345配vpn邻居
+	2)r1作为路由反射器
+	3)r1,r4,r5配成P，r2,r3,r6,r7配成PE
+	[解法]在bgp的vpnv4上激活邻居关系
+	[检查]
+		a)sh run | se vpnv4看到r1的vpnv4配置为route-reflector-client
+		b)sh bgp vpnv4 unicast all summary
+			在r1上查看bgp邻居，能看到r2,r3,r6,r7
+			在r2,r3,r6,r7上能看到r1
+			在r2,r3还能看到和r20的邻居关系
+	4)配mpls，用ldp作为标签分发协议，用loopback0作为ldp的id
+	[解法]在所有接口上配mpls ldp
+	[检查]sh mpls ldp neighbor
+	
+	5)配PE的mpls，使traceroute看不到P
+	[解法]no mpls ip aggregate-ttl
+	
+	6)r20出来后要选择r3，从r12-r14traceroute1.2.3.4要7跳
+	[检查]用r12/r13/r14 traceroute 1.2.3.4，看不到P，一共7跳
+	
+详解
+[r1]
+router bgp 12345
+address-family vpnv4
+neighbor 123.2.2.2 activate
+neighbor 123.3.3.3 activate
+neighbor 123.6.6.6 activate
+neighbor 123.7.7.7 activate
+neighbor iBGP route-reflector-client
+
+[r2,r3,r6,r7]
+router bgp 12345
+address-family vpnv4
+neighbor 123.1.1.1 activate
+
+no mpls ip aggregate-ttl
+
+[r1-r7]以r1为例
+mpls ldp router-id lo 0 force
+int e0/1
+mpls ip
+int e0/2
+mpls ip
+
+[r20]
+ip prefix list a permit 1.2.3.4/32
+route-map abc permit 10
+match ip address prefix a
+set weight 100
+rotue-map abc permit 20
+
+router bgp 65112
+address-family ipv4
+neighbor 10.201.99.5 route-map abc in

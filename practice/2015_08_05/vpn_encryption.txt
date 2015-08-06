@@ -1,0 +1,23 @@
+vpn_encryption
+as45678
+r17,r18,r19
+
+step1: 
+	phase1->isakmp policy, encrypt, auth, group
+step2: 
+	phase2->esp-aes, transport, transform-set CCIEXFORM, ipsec profile DMVPNPROFILE
+
+[r17-r19]r17 as example
+crpyto isakmp policy 10
+encrypt aes
+auth pre-share
+group 2
+crypto isakmp key CCIE address 0.0.0.0
+
+crypto ipsec transform-set CCIEXFORM esp-aes
+mode transport
+crypto ipsec profile DMVPNPROFILE
+set transform-set CCIEXFORM
+
+int tu 0
+tun protection ipsec profile DMVPNPROFILE

@@ -1,0 +1,41 @@
+vpn_mpls
+as12345
+
+step1: vpnv4 neighbor
+step2: mpls ldp for r1-r7
+step3: r20 to 1.2.3.4, choose r3 as priority. use route-map and prefix-list
+
+[r1]
+router bgp 12345
+addre vpnv4
+neigh 123.2.2.2 acti
+neigh 123.3.3.3 acti
+neigh 123.6.6.6 acti
+neigh 123.7.7.7 acti
+neigh iBGP route-reflector-client
+
+[r2]
+router bgp 12345
+addr vpnv4
+neigh 123.1.1.1 acti
+
+step2: mpls ldp
+
+[r1-r7]r1 as example
+mpls ldp router-id lo 0 force
+int e0/1
+mpls ip
+int e0/2
+mpls ip
+
+[r20]
+ip prefix-list a permit 1.2.3.4/32
+
+route-map abc permit 10
+match ip address prefix a
+set weight 100
+route-map abc permit 20
+
+router bgp 65112
+addr ipv4
+neigh 10.201.99.5 route-map abc in

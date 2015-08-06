@@ -1,0 +1,62 @@
+security
+1. ssh
+[r20]
+banner login #Caution!No unauthorized access!#
+
+2. violation device
+[sw3]
+int range e0/0-3
+sw port-security 
+sw port-security mac-address sticky
+sw port-security maximum 1
+sw port-security violation shutdown
+
+advanced network
+1. ssh
+[r20]
+username test privilege 1 password test
+#next session 5...check
+ip ssh logging events
+
+crypto key generate rsa
+768
+
+line vtp 0 4
+login local
+transport input ssh
+acess-class 1 in
+access-list 1 permit 123.10.2.0 0.0.0.255
+
+2. nat INET
+[r20]
+access-list 1 permit 10.1.0.0 0.0.255.255
+access-list 1 permit 10.2.0.0 0.0.255.255
+ip nat inside source list 1 int lo 0 overload
+int e1/0.99
+ip nat outside
+int e1/0.12 	#13,14,15
+ip nat inside
+int e1/1.99
+ip nat outside
+int e1/1.12 	#13,14,15
+ip nat inside
+
+3. netflow
+ip cef
+int tu 0
+ip flow egress
+
+ip flow-top-talker
+sort-by bytes
+top 10
+cache-timeout 10000
+
+4. ntp
+[sw3]
+ntp master
+ntp source lo 0
+
+[r10,r12]r10 as example
+ntp server [sw3 ipv6 addr]
+ntp source lo 0
+

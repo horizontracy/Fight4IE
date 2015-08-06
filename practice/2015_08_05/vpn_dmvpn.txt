@@ -1,0 +1,56 @@
+vpn_dmvpn
+r17,r18,r19
+step1. set nhrp server, close split-horizon in eigrp
+step2. set nhrp client, network tunnel port in eigrp
+
+[r17]nhrp server
+int tu 0
+tu mode gre multipoint
+tu source s2/0
+tu key 45678
+
+no ip redirects
+ip address 10.18.19.1 255.255.255.0
+
+ip nhrp network-id 45678
+ip nhrp auth 45678key
+ip nhrp holdtime 300
+ip nhrp map multicast dynamic
+ip nhrp redirect
+
+bandwidth 1000
+delay 1000
+ip mtu 1400
+ip tcp adjust-mss 1360
+
+router eigrp cisco
+addr ipv4 autonomous-system 45678
+topology base
+af-inter tu 0
+no split-horizon
+
+[r18,r19]nhrp client, r18 as example
+int tu 0
+tu mode gre multipoint
+tu source s1/0
+tu key 45678
+
+no ip redirects
+ip address 10.18.19.18 255.255.255.0
+
+ip nhrp network-id 45678
+ip nhrp auth 45678key
+ip nhrp holdtime 300
+ip nhrp map multicast 203.45.17.2
+ip nhrp map 10.18.19.1 203.45.17.2
+ip nhrp nhs 10.18.19.1
+ip nhrp shortcut
+
+bandwidth 1000
+delay 1000
+ip mtu 1400
+ip tcp-aj mss 1360
+
+router eigrp 45678
+addr ipv4
+network 203.45.18.2 255.255.255.0

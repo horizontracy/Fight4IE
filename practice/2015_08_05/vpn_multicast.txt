@@ -1,0 +1,36 @@
+vpn_multicast
+as45678-as65222
+r15-r19
+
+step1: set all eth ports 'ip pim sparse-mode' 
+step2: r15 lo0, r18-r19 tunnel0 & e0/0 'ip pim sparse-mode'
+step3: set r15 rp & bsr candidate
+step4: sw5 vlan
+step5: r18-r19 join 232.1.1.1
+
+ip pim sparse-mode
+
+[r15-r19,sw5-sw6]r15 as example
+ip multicast-routing
+int e0/1
+ip pim sparse-mode
+int e0/2
+ip pim sparse-mode
+
+[r15]
+ip rp-candidate lo 0
+ip bsr-candidate lo 0
+int lo 0
+ip pim sparse-mode
+
+[sw5]
+int x	#except e0/0
+sw acc vlan 5
+
+[r18-r19]r18 as example
+int tu 0
+ip pim sparse-mode
+int e0/0
+ip pim sparse-mode
+
+ip igmp join-group 232.1.1.1

@@ -1,0 +1,38 @@
+layer3_ipv6
+
+step1: ipv6 ospf neigh for sw3,sw4,r10,r11
+step2: sw3,sw4 vlan 34 priority, sw3 is BDR, sw4 is DR
+step3: redistribute bgp <-> ospfv3 on r10,r11
+step4: ipv6 bgp for r12,r13,r14
+step5: network lo0 and e0/0 in bgp for r12,r13,r14
+
+[r10,r11,sw3,sw4]r10 as example
+ipv6 unicast-routing
+ipv6 router ospf 1
+router-id 123.10.10.10
+int lo 0
+ipv6 ospf 1 area 10
+int e0/2
+ipv6 ospf 1 area 10
+
+[sw3-sw4]sw3 as example
+int vl 34
+ipv6 ospf priority 254	#255 for sw4
+#if config sw3 first, then sw3 was DR, should run 'clear ipv6 ospf process'
+
+[r10,r11]redistribute bgp <--> ospfv3, r10 as example
+router bgp 34567
+redistribute ipv6 ospf 1
+
+ipv6 router opsf 1
+redistribute bgp 34567
+
+[r12-r14]r12 as example
+router bgp 65111
+bgp router-id 123.12.12.12
+neigh [20001 ipv6 addr] remote-as 20001
+addr ipv6
+neigh [20001 ipv6 addr] acti
+
+network [e0/0 ipv6 addr]/64		#no last 12
+network [lo0 ipv6 addr]/128

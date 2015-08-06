@@ -1,0 +1,43 @@
+attention_points
+
+ospf
+	as12345
+		network 123.0.0.0 20.255.255.255
+eigrp
+	as34567
+		network 123.0.0.0 0.255.255.255
+		no auto-summary
+	as45678
+		r15-r17: router eigrp cisco
+		r18-r19: eigrp stub
+
+bgp
+	as12345
+		r1: 
+			set r2,r3,r6,r7 as route-reflector-client
+			r2,r3,r6,r7 as peer-group
+			r2,r3,r6,r7 setup EBGP neighbor on vrf port
+	as65112
+		r20: 
+			network 123.20.20.20
+			network 10.20.1.0
+			network 10.20.2.0
+			123.0.0.0 summary-only
+			10.0.0.0 summary-only
+	as34567
+		r8-r11:
+			next-hop-self
+		r9,r11:
+			redistribute only default route (0.0.0.0) bgp --> eigrp
+				ip prefix-list default permit 0.0.0.0/0
+				route-map default permit 10
+					
+			weight 500 -> r9, 400 -> r11
+	as45678
+		r15:
+			redistribute bgp --> eigrp
+			redistribute eigrp --> bgp
+vpn_mpls
+
+vpn_dmvpn
+

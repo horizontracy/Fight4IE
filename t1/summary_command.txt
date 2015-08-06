@@ -1,0 +1,39 @@
+summary_command
+
+layer2
+sh vtp status
+sh vtp password
+sh int status
+sh ip int br
+sh int trunk
+sh spanning-tree
+sh run | se spanning-tree
+sh mac address-table aging-time
+
+layer3
+sh ip ospf neigh
+sh ip route ospf
+sh ip eigrp neigh
+sh ip route eigrp
+sh ip bgp sum
+sh run | se bgp
+sh ip bgp
+sh run | b r b
+sh ip route 0.0.0.0
+sh ip bgp vpnv4 unicast all sum
+sh ip bgp vpnv4 unicast all
+sh run | se eigrp
+sh ipv6 route ospf
+ping 1.2.3.4 source lo 0
+ping 1.2.3.4 source e0/0
+traceroute 1.2.3.4 source lo 0
+traceroute 1.2.3.4 source e0/0
+
+vpn
+sh mpls ldp neigh
+sh ip nhrp
+sh ip pim rp mapping
+
+other
+ssh -l test 123.20.20.20
+sh ip flow top-talkers

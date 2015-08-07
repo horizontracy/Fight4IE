@@ -93,3 +93,77 @@ metric值
 
 （未完待续。。视频12:45）
 
+
+看到r3的metric值时655xx，因此r5一定做了max－metric
+在r5下
+sh run | se ospf
+看到如下
+router ospf 1
+router-id 123.5.5.5
+max-metric router-lsa		＃效果是把该路由器产生的所有lsa路由的metric值变到最大，找到错点，删掉该命令，使metric值恢复
+network 123.5.5.5 0.0.0.0 area 0
+network 123.45.67.18 0.0.0.0 area 0
+network 134.56.78.41 0.0.0.0 area 1
+
+在r3上
+sh ip ospf database sum 134.56.78.48 
+删掉后在r3上看ospf路由数据库，发现来自r5的路由的metric已经从655xx变为20，而由r3产生的路由的metric是11
+20对不对呢？答案是数以太网口，经过1个接口就是＋10，20是正确的
+r3的metric是11，这是不正确的，因此在r3这一侧，肯定有接口改动了cost值
+影响r3看到metric值的接口只有r3的e0/2和r21的e0/1，因此要看这2个接口的cost值
+r3的e0/2的cost值默认是10，而r21的e0/1被改成了1
+如何看cost值？以r21为例
+sh ip ospf int br 	＃有cost这一栏，可以看到lo0的e0/1的cost是1
+如何修改？
+到r21上
+sh run int e0/1
+看到如下：
+ip ospf cost 1 	#修改：no ip ospf cost 1
+修改完后，到r1或者r3上看ospf路由数据库，效果和r3应该是一致的
+看到r3和r5的ospf路由的metric值时相同的，为20，ok
+
+至此，路由已经ok，剩下的就是需要再路由表中看到负载分担
+在r1上
+sh ip route 	＃找134.56.78.48的路由，应该有负载分担，但是没有看到负载分担的现象，需要找原因
+				＃只有指向e0/2接口点，即指向r5的
+				＃而指向r3的路由没有出现
+在数据库ok的情况下（看到r3、r5路由，且metric相等，前缀掩码都一样），怀疑ospf到路由表的过程中有分发列表过滤掉路由
+怀疑配了分发列表
+在r1上
+sh run | se ospf
+看到：
+router ospf 1
+mpls ldp autoconfig
+router-id 123.1.1.1
+network 123.0.0.0 0.255.255.255 area 0
+distribute-list 1 in Ethernet0/1 	＃配了分发列表，找到错点
+其含义为：只有在访问控制列表1里面被permit的路由才能被放进路由表，而当其他的路由的出口是e0/1时都会被干掉。
+如何修改？
+在访问控制列表1中，将影响路由的条目给放开
+sh ip access-list 1
+看到：
+standard ip access list 1
+10 deny 134.56.78.48, wildcard bits 0.0.0.7(4 matches)	#反掩码是7，即地址为.48-.55，.48是在其中的
+20 permit any (6 matches)
+为了不让10 deny这条访问列表影响到，在其前面，例如5，配置允许的列表，如下：
+(config) ip access-list standard 1
+(config) 5 permit 134.56.78.48 	#其含义为，放通134.56.78.48这条路由，标准列表不写反掩码的话，默认为0.0.0.0，即精准匹配该路由
+show出访问控制列表来验证：
+sh ip access-list 1
+看到：
+standard ip access list 1
+5 permit 134.56.78.48 (1 match)	#看到这里match说明匹配到了，而且5在10的前面说明5比10优先生效，排掉错点
+10 deny ..
+20 permit ..
+再次show路由表验证：
+sh ip route ospf
+看到如截图所示的负载效果
+
+
+
+
+
+
+
+
+

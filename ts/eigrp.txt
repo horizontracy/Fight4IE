@@ -1,0 +1,169 @@
+ts eigrp
+题目
+r11到r14的loopback口要负载分担，一边走左侧r12，一边走右侧r13，并且metric值要求为1703
+截图效果：
+D	145.14.14.14 [90/1703] via 145.67.89.6,...,e0/1
+				 [90/1703] via 145.67.89.2,...,e0/0
+
+
+错误点
+1. r11-r14 eigrp k值不一致，全部刷成0 1 1 1 1 1
+2. r12的e0/1设置了delay，删掉
+3. r13的e/1设置了bandwidth，删掉
+4. r12没有no passive e0/1
+5. r13有distribute－list阻止了r14 loop0的路由
+6. r13有offset－list影响了路由的metric
+
+［详解］
+登陆到某台设备上就可以看到明显的故障，log一直打印出‘k-value mismatch’，找到错点1
+知识点：eigrp建立neighbor的前提条件是k值一致
+因此需要修改k值，但是这里k不可以随便修改为什么值，而是要根据题目给的最后metric值的要求进行修改
+根据前人的经验，将k值刷为0 1 1 1 1 1
+修改方法：
+在r1上
+sh run | se eigrp
+router eigrp 145
+metric weights 0 1 0 1 1 1 	#这一行修改为0 1 1 1 1 1，然后刷所有的设备r11-r14，解决错点1
+network 145.0.0.0 0.255.255.255
+passive-interface default
+no passive-interface e0/0
+no passive-interface e0/1
+
+本题接口不多，重点关注r12的e0/1，r13的e0/1，r11的e0/0，r11的e0/1
+上去show一下，把多余的delay和bandwidth都删掉
+在r11上
+sh run int e0/0 和 sh run int e0/1
+看到很干净的配置，没有多余的delay和bandwidth
+
+在r12上
+sh run int e0/1
+看到
+int e0/1
+ip address 145.67.89.17 255.255.255.0
+delay 100	#找到错点，删掉
+
+在r13上
+sh run int e0/1
+看到
+it e0/1 
+bandwidth 100 	#找到错点，删掉
+ip address 145.67.89.25 255.255.255.0
+
+干掉这2个错点，理论上说，在r11上可以看到r11到r14的路由应该有负载分担
+在r11上
+sh ip route eigrp
+发现找不到r14的路由
+到r12和r13上找是否有r14的路由
+在r12和r13上
+sh ip route eigrp	＃都没有看到r14的路由
+
+在r14上
+sh ip eigrp int br	#看当前哪些接口启用了eigrp
+看到e0/0和e0/1都起了eigrp，但是loopback0没有，因此要查看下eigrp的配置
+sh run | se eigrp
+router eigrp 145
+metric weights 0 1 1 1 1 1
+network 145.0.0.0 0.255.255.255	#宣告的地址是145.0.0.0
+passive-interface default	
+no passive-interface e0/0
+no passive-interface e0/1
+
+sh run int lo 0
+int loopback0
+ip address 145.14.14.14 255.255.255.255	#145.14.14.14在145.0.0.0的范围里了，应该被宣告了，但是被passive掉了，找到错点
+修改方法：
+no passive-interface lo 0
+验证：
+sh ip eigrp int br	#看到loopback0口出现，ok
+
+再到r11上看是否有r14 loopback0的路由，还是没有看到r14的lo0的路由，继续找故障
+在r12和r13上确认是否有r14的路由
+sh ip route eigrp	#确认没有
+在r14下
+sh run | se eigrp	＃正常
+在r12下
+sh run | se eigrp	＃没有看到过滤措施
+router eigrp 145
+metric weights 0 1 1 1 1 1 
+network 145.0.0.0 0.255.255.255
+passive-interface default
+no passive-interface e0/0 	＃只有no passive了1个接口，有理由怀疑，查看下邻居关系
+sh ip eigrp neigh 	#只有145.67.89.1，即只有r11的邻居，没有r14的邻居，找到错点
+					＃修改方法是到eigrp下no passive掉e0/1
+sh ip route eigrp 	＃终于看到r14的lo0路由
+
+在r13下
+sh ip eigrp neigh 	＃看到2个邻居，说明邻居关系是ok的
+
+sh run | se eigrp	＃看到有分发列表和偏移列表的过滤措施
+router eigrp 145
+distribute-list acl145 in e0/1 	#分发列表：控制路由进出，调用在了e0/1的入方向
+metric weights 0 1 1 1 1 1
+network 145.0.0.0 0.255.255.255
+offset-list 1 in 10 			＃偏移列表：给路由增加metric值，这个等到最后选路没有负载分担的时候再处理
+passive-interface default
+no passive-interface e0/0
+no passive-interface e0/1
+
+sh ip access-lists acl145
+看到：
+standard ip address list acl145
+10 deny 145.14.14.14 (2 matches) 	#明确deny了r14的lo0，且其调用了e0/1的入方向，即r13从r14收路由的时候，把r14的lo0的路由过滤了
+20 permit any (...)
+尝试的修改方法为：
+先尝试插一个小的序号的标准控制列表
+ip access-list standard acl145
+5 permit 145.14.14.14
+show出来看到：
+10 deny ... 	＃发现10在5的上面
+5 permit ... 	＃5没有match到任何路由
+20 permit ...
+原因是标准访问控制列表不按照序号来
+正确的修改方法是：（放大招）删掉acl145然后重新写
+no access-list standard acl145
+access-list standard acl145
+5 permit 145.14.14.14
+10 deny 145.14.14.14
+20 permit any
+再show出来检查，就看到5在10的前面，并且match到了，搞定错点
+
+sh ip route eigrp 	#能够看到145.14.14.14到路由了
+至此r12和r13都有r14的lo0的路由了
+到r11上查看
+sh ip route eigrp
+已经能够看到到145.14.14.14的路由已经有了，并且已经负载分担了，metric值也是1703
+但是事实上，r13上还有个偏移列表的问题没有解决，这里看到负载分担和metric值正确，是因为偏移列表的偏移量做太小了
+还是处理这个，思路是修改访问控制列表，只有访问控制列表匹配到的路由，才会被偏移
+到r13上
+sh ip access-list 1
+看到
+standard ip access list 1
+10 permit 145.14.14.14 	#应该在这个列表里把14的lo0的路由给deny掉
+
+tips：
+考试时可能给另外一张截图
+sh ip eigrp topology 145.14.14.14/32 	＃会显示出多条路径，包括默认的路径和备份的路径
+信息更多，重点关注的是：metric值1703、bandwidth
+应该能看到2条路径，如果2条路径的信息不一致，例如bandwidth，如果某一个bandwidth更小，则应该是那条路径上的bandwidth被修改了，delay不一致也是一样
+特别提出的是可靠性，一般是255/255，但是本题有k值不匹配的问题，会使得接口可靠性下降
+接口可靠性可以查看
+sh int e0/0
+有reliability可以看到
+如果reliability值不正确，计算出的metric值有可能不是1703，所以应该先修改k value mismatch，然后等reliability值回到255，再做后面的配置
+假如可靠性已经恢复到255，而eigrp的metric还不是1703，那么可以clear一下eigrp邻居
+clear ip eigrp neigh
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

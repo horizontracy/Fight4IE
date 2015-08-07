@@ -1,0 +1,180 @@
+
+【3-1 vpn mpls】
+r1-r7
+1. r1,r2,r3,r6,r7在bgp下建立vpnv4邻居，r1设置成路由反射器
+2. 在r1-r7下设置mpls，用ldp协议，用lo0作为network-id
+	mpls ldp router-id lo 0 force
+	int x
+		mpls ip
+3. r2/r3/r6/r7配置成PE，no mpls ip propagate-ttl	
+4. r2/r3/r6/r7与ISP在vrf口下建立EBGP邻居
+5. r20到1.2.3.4选路优先r3
+	配前缀列表a匹配1.2.3.4/32
+	route-map abc 10/20
+		10里面设置r3 weight 100，匹配前缀列表a
+	在r20的bgp下ipv4下配走r3的INET，在入方向上以route-map abc过滤
+【详解】
+1. [r1]
+router bgp 12345
+	address-family vpnv4
+		neigh 123.2.2.2 acti
+		neigh 123.3.3.3 acti
+		neigh 123.6.6.6 acti
+		neigh 123.7.7.7 acti
+		neigh iBGP route-reflector-client
+
+[r2/r3/r6/r7]
+routr bgp 12345
+	address-family ipv6
+		neigh 123.1.1.1 acti
+
+2. [r1-r7]r1为例
+mpls ldp router-id lo 0 force
+int e0/1
+	mpls ip
+int e0/2
+	mpls ip
+
+3. [r2/r3/r6/r7]r2为例
+no mpls ip propagate-ttl
+
+4. [r2/r3/r6/r7]r6为例
+router bgp 12345
+	neigh 201.123.1.1 remote-as 20001
+	address-family ipv4 vrf GREEN
+		neigh 201.123.1.1 acti
+	address-family ipv4 vrf BLUE
+		neigh 201.123.1.1 acti
+	address-family ipv4 vrf INET
+		neigh 201.123.1.1 acti
+5. [r20]
+ip prefix-list a permit 1.2.3.4/32
+
+route-map abc permit 10
+match ip address prefix a
+set weight 100
+route-map abc permit 10
+
+router bgp 65112
+address-family ipv4
+neigh 10.201.99.5 route-map abc in
+
+【3-2 vpn dmvpn】
+r17-r19
+1. r17的tunnel 0配成nhrp server，在eigrp下no split-horizon
+2. r18-r19的tunnel 0配成nhrp client
+3. r18-r19在eigrp进程下宣告tunnel口和e0/0，r17在eigrp下宣告tunnel口
+【详解】
+1. [r17]
+int tunnel 0
+tunnel mode gre multipoint
+tunnel source s2/0
+tunnel key 45678
+ip address 10.18.19.1 255.255.255.0
+no ip redirects
+ip nhrp network-id 45678
+ip nhrp auth 45678key
+ip nhrp map multicast dynamic
+ip nhrp redirect
+ip nhrp holdtime 300
+bandwidth 1000
+delay 1000
+ip mtu 1400
+ip tcp adjust-mss 1360
+
+router eigrp cisco
+	address-family ipv4 autonomous-system 45678
+		topology base
+			af-interface tunnel 0
+				no split-horizon
+
+2. [r18-r19]r18为例
+int tunnel 0
+	tunnel mode gre multipoint
+	tunnel source s1/0
+	tunnel key 45678
+	no ip redirects
+	ip address 10.18.19.18 255.255.255.0
+	ip nhrp network-id 45678
+	ip nhrp auth 45678key
+	ip nhrp map 10.18.19.1 203.45.17.2
+	ip nhrp map multicast 203.45.17.2
+	ip nhrp nhs 10.18.19.1
+	ip nhrp holdtime 300
+	ip nhrp shortcut
+	bandwidth 1000
+	delay 1000
+	ip mtu 1400
+	ip tcp adjust-mss 1360
+
+3. [r17-r19]r18为例
+router eigrp 45676
+	address-family ipv4
+		network 10.18.19.18 255.255.255.0
+		network 10.2.18.0 255.255.255.0
+
+【3-3 vpn ipsec encryption】
+r17-r19
+1. 2个phase
+2. phase1
+	crypto isakmp policy 10
+		encrypt aes
+		auth pre-share
+		group 2
+	crypto isakmp key CCIE address 0.0.0.0
+3. phase2
+	crypto ipsec transform-set CCIEXFORM
+		mode transport
+	crypto ipsec profile DMVPNPROFILE
+		set transform-set CCIEXFORM
+	int tunnel 0
+		tunnel protection ipsec profile DMVPNPROFILE
+【详解】
+[r17-r19]r17为例
+crypto isakmp policy 10
+	encrypt aes
+	auth pre-share
+	group 2
+crypto isakmp key CCIE address 0.0.0.0
+
+crypto ipsec transform-set CCIEXFORM
+	mode transport
+crypto ipsec profile DMVPNPROFILE esp-aes
+	set transform-set CCIEXFORM
+int tunnel 0
+	tunnel protection ipsec profile DMVPNPROFILE
+	
+【3-4 vpn multicast】
+r15-r19,sw5-sw6
+1. 内部的接口都要做
+	ip multicast-routing
+	int x
+		ip pim sparse-mode
+2. r15是rp-candidiate和bsr-candidate, r15需要在lo0也做ip pim sparse-mode
+3. sw5的其他接口划进vlan5
+4. r18,r19需要在tunnel0下join到232.1.1.1, e0/0和tu 0也要ip pim sparse-mode
+
+【详解】
+1. [r15-r19,sw3-sw4]r15为例
+	ip multicast-routing
+	int e/1
+		ip pim sparse-mode
+	int e0/2
+		ip pim sparse-mode
+2. [r15]
+	ip rp-candidate lo 0
+	ip bsr-candidate lo 0
+	int lo 0
+		ip pim sparse-mode
+3. [sw3]
+	int ex/x
+		sw acc vl 5
+4. [r18-r19]
+	int e0/0
+		ip pim sparse-mode
+	int tunnel 0
+		ip pim sparse-mode
+	int tunnel 0
+		ip igmp join-group 232.1.1.1
+
+	

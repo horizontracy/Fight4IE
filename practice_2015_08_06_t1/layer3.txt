@@ -1,0 +1,66 @@
+【2-1 ospf as12345】
+1. r1-r7跑ospf
+	宣告123网段，反掩码
+
+【2-2 eigrp as34567】
+1. r8-r11、sw3-sw4跑eigrp
+	宣告123网段，反掩码
+	关闭自动汇总
+2. r8->r11做负载均衡，在vl34上delay 100
+
+【2-3 eigrp as45678】
+1. r5-r17以命名方式配eigrp
+2. r18-r19、sw5-sw6以普通方式跑eigrp：宣告123网段（反掩码）、关自动汇总
+3. r17不向r18/r19发eigrp查询，eigrp stub
+
+【2-4 bgp as12345】
+1. r1作为路由反射器，和r2/r3/r6/r7建立bgp邻居，IBGP要update-source
+2. r2/r3/r6/r7和r1建立bgp邻居
+
+【2-4 bgp as65112】
+1. r2/r3配vrf口
+	ip vrf
+	route-target
+2. r2/r3的e1/0打开，e1/0.xx配ip/封装/vrf转发
+3. r2/r3的bgp进程的vrf口下与r20建立邻居关系
+4. r20的e1/0和e1/1打开，e1/0.xx和e1/1.xx配ip/封装/vrf转发
+5. r20的bgp进程的ipv4下与r2/r3建立邻居关系，且除了.99都要配default-originate
+6. r20的bgp进程的ipv4下宣告123.20.20.20、10.20.1.1、10.20.2.1
+7. r20的汇总(aggregate-address)123网段和10网段的路由，抑制细路由
+	
+【2-5 bgp as34567】
+1. 全路径建立bgp邻居关系，bgp进程的ipv4下配next-hop-self，IBGP要update-source
+2. r9和r11要重分发bgp进eigrp，且只从as30000收默认路由
+	配前缀列表default匹配0.0.0.0/0
+	配route-map b2e匹配前缀列表
+	重分发时用route-map b2e过滤
+3. r9是默认出口，r11是备份出口，local preference为500/400
+
+【2-6 bgp as45678】
+1. 不配IBGP，配EBGP，EBGP不要update-source
+2. r15上做bgp和eigrp的双向重分发
+	bgp->eigrp要在topology base下做，要设置metric参数
+	eigrp->bgp直接重分发即可
+3. 调整r16-r19的管距，network 0.0.0.0 backdoor
+	EBGP管距本来为20，用backdoor命令调整为200
+	从而满足题目要求默认走eigrp，bgp为备份
+
+【2-6 ipv6 ospfv3】
+1. sw3-sw4、r10-r11上配ospfv3，lo0、vlan、eth口放入对应area
+2. r10-r11上做ospfv3和ipv6 bgp的双向重分发
+	r10-r11要和as20001、as20002建立ipv6的EBGP邻居
+	ospfv3->bgp直接分发
+	bgp->ospfv3直接分发
+
+【2-6 ipv6 bgp】
+1. r12-r14与as20001、as20002建立EBGP邻居
+	在bgp进程的ipv6协议下配EBGP邻居
+	宣告lo0和e0/0的ipv6地址
+	
+【2-7 bgp policy】
+1. 所有的PE通告A类123.0.0.0/8的路由到INET的EBGP邻居
+	配前缀列表123匹配123.0.0.0/8 le 32
+	在as12345、as34567的bgp进程的ipv4协议下，在出方向上匹配前缀列表123
+		match ip address 123 out
+2. r13要优先走as20002
+	在bgp进程下设置as20002的weight 1000

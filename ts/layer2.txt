@@ -1,0 +1,91 @@
+ts1 layer2
+
+题目要求：
+user r101 should successfully traceroute server r100 behind sw3, 3 hops
+并附有一张trace的截图
+
+错误点：
+1. sw2的e1/0安全绑定的mac地址错误
+2. sw2的e1/0划分错了vlan，应该划分进vlan100
+3. sw2的e1/0的trunk允许多vlan中没有vlan12
+4. sw2的int vlan 100的ip地址配错了
+5. r7，r8的dhcp pool中关于pc101和server的client－idenditfier都错了
+6. r7，r8的ip host域名映射错误
+
+
+［详解］
+在sw2上看接口
+sh cdp neigh	#看互联的设备
+没有e1/0
+sh int status
+发现e1/0是err-disable，vlan是10
+sh run int e1/0
+发现配了port－security, 这个mac地址配错了
+改这个mac地址前先把e1/0 shutdown掉，后面记得开启
+如何找正确的mac地址？到user r101上找，用命令sh int e0/0
+用括号外面的mac地址xxxx.xxxx.xxxx
+重新在sw2的e1/0上配switchport port-security mac-address xxxx.xxxx.xxxx
+千万记得重新打开e1/0
+检查sh int status, 看到e1/0状态变成connected
+
+vlan10也是错的，拓扑图上是vlan100
+int e1/0
+sw acc vl 100
+
+检查trunk，sh int trunk, 发现e0/0的vlan12被挖掉了
+而且sh spanning-tree mst 1可以看到只有e0/0是转发状态，其他端口都是阻塞状态
+因此需要补上vlan12
+int e0/0
+switchport trunk allowed vlan add 12
+可以看到vlan12起来
+sw1上也可能有sw2上同样的错误
+
+sw2上sh int vl 100
+看到ip地址为172.16.100.10，而图上是.1
+修改方法为
+int vl 100
+ip addr 172.16.100.1 255.255.255.0
+
+接下来查看user r101的dhcp请求能够送达到r7和r8
+即user r101所在的网段和r7、r8的loopback口是否可达
+测试路由连通性
+ping 172.7.7.7 source vl 100
+ping 172.8.8.8 source vl 100
+是通的，说明路由ok
+在101上看地址，命令是sh int e0/0
+看到获取到了地址，为.2，和图上的.200不符，找到错点
+到r7、r8上看地址池的配置
+sh run | se dhcp
+找到pc101的地址ip dhcp pool PC101，发现配的是172.16.100.200，说明dhcp pool配置是正确的
+但是发现client-identifier和101的mac地址不匹配，错误的是01aa.bbcc.0056.00，而101的mac为aabb.cc00.6e00
+修改方法是开一个记事本，把ip dhcp pool PC101的配置复制出来
+然后替换掉client-identifier的mac地址，前面对01保留，点的位置可以不用管
+先在r7上no掉错误的client－identifier，然后烧入正确的client－identifier
+会有提示说‘a binding for this cient already exists’
+用sh ip dhcp binding发现006e已经被绑定了.2
+用clear ip dhcp binding *清掉，然后重新烧一遍client－identifier
+再用sh ip dhcp binding检查，发现绑定到.200，ok
+
+r8上的dhcp pool同样有问题，修改对方法同r7
+
+修改完r7、r8后，到101上对e0/0 shutdown再no shutdown，重新拿dhcp地址，有log信息打印出时.200，sh ip int br也可以看到拿到.200
+
+server r100的dhcp地址sh int e0/0看到是.2, 图上是.200，发现错点
+修改方法与pc101相同：查看r7、r8地址池，清地址绑定，删掉ip dhcp pool，重新烧e0/0的配置
+
+可以用sh dhcp lease查看dhcp从哪一台server获取
+
+从101 traceroute 100
+traceroute 172.16.200.200
+看到第三行域名是SERVER1，而截图是server1，找到错点
+在r101上sh ip dns view default
+看到dns server是
+172.7.7.7
+172.8.8.8
+写在上面的会被优先使用
+到r7上sh run | se ip host
+发现其配置为
+ip host SERVER1.bancobank.org 172.16.200.200
+把这行复制下来，先no掉，然后再修改为server1烧上去
+
+再trace即可看到截图效果

@@ -1,0 +1,62 @@
+ppp
+题目要求：r11能够telnet r17，r17应该通过ppp获得一条默认路由
+
+错误点：
+1. r17开启了验证开关，关闭
+2. r17的hostname与r12的username不一致
+3. r12调用地址池参数错误
+4. r17接口上生成默认路由的开关没有配
+
+［详解］
+主要考查点为r12和r17之间的ppp线路
+考点主要有三块
+1. ppp chap验证
+2. ppp地址下放pool和dhcp
+3. ip route的获得
+
+入手首先需要做通r12和r17的直连
+在r17上debug ppp negotiation可以看到3个考点信息，但是信息比较多
+
+在r12上看接口s1/0 sh run int s1/0
+配了ip unnumbered loopback45，这个是为了给串口分配地址
+sh run int 45
+发现loopback45没有配地址，应该给它配地址，看图上的地址，配上145.67.89.21
+再sh run int s1/0就可以看到s1/0和lo45的地址是一致的（这个只是知识点）
+还可以看到ppp auth chap
+
+在r17上看s1/0，看到有callout，即r17也对r12发起验证，找到错点
+需要删掉callout这一行的配置
+还可以看到r17上配的hostname和password，这里hostname配的是spokel_R17（错了，非常隐蔽）
+在r12上sh run | se username可以看到r12上的hostname为spoke1_R17，hostname不一样，r17上配错了
+这个错点很隐蔽，最好直接把r12的复制过来
+改完这个错点后，看到链路起来的log信息
+再用sh ip int br发现s1/0还没有被分配到地址，继续找错
+
+在r12上int s1/0，peer default ip address ? 
+可以看到有dhcp／dhcp－pool／pool三种分配地址的方式
+在r12上sh run | se pool 
+看到ip dhcp pool SPOKE1，是用dhcp pool
+因此应该在r12的s1/0上peer default ip address dhcp-pool SPOKE1，这样才正确掉用了dhcp pool
+然后到r17上重新拿dhcp地址
+
+在r17上sh ip route可以发现没有默认路由，这是因为没有做开关
+修改方法
+int s1/0
+ppp ipcp route default
+shutdown
+no shutdown
+如果是用了debug的话，可以看到install default route thru 145.67.89.21
+再sh ip route就可以看到0.0.0.0的默认路由
+
+这时候在r17上pingr r12是通的
+因为eigrp尚未排除哦，r11 telnet r17是不通的，而考试时，eigrp如果在右半侧，所以telnet是通的
+检查下r17的line：sh run | se line
+配置有password和login，transport input telent，这是正确的
+
+r12应该在eigrp中宣告出自己的s1/0，这样r11才可以学到这个路由，从而访问到r17
+
+ 
+
+
+
+

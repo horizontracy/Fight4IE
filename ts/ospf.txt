@@ -1,0 +1,95 @@
+ts ospf
+题目要求：r1到r21和r22之间的网络，应该负载分担
+
+截图：
+O IA	134.56.78.48	[110/30]	via 123.45.67.18, 00:00:16, Ethernet0/2
+ 						[110/30]	via 123.45.67.6, 00:00:16, Ethernet0/1
+
+错误点：
+1. r22和r5之间的链路掩码配错了
+2. r22的ospf进程下没有no passive e0/0
+3. r21接口点掩码和ospf cost错误
+4. r3上面进行了路由汇总，删除掉
+5. r5的ospf进程下有max－metric router－las，删除掉
+6. r1上有distribute－list过滤了指向r3的路由
+
+［详解］
+到r1上sh ip ospf database sum 134.56.78.48
+查看ospf数据库，发现ospf路由数据库为空的
+到r3和r5上查看，因为r3和r5应该既有area1的lsa信息，又有area0的lsa信息
+sh ip ospf database sum 134.56.78.48
+发现r5上的ospf路由数据库也是空的
+这时候怀疑r5和r22的邻居关系是否正常
+sh ip ospf neigh
+发现r5只有和r1有邻居关系，没有和r22的邻居关系
+sh ip ospf int br，查看是否有接口是否配置正确：是否宣告、属于哪个area、ip和mask是否正确、cost值
+发现e0/2的ip mask配置是29位点掩码，而截图上应该是30位的掩码，找到错点
+同样地，在r22上看sh ip ospf int br，查看ospf接口信息
+看到r22上的e0/0配置的掩码不正确：134.56.78.42/29，这里掩码也错了，图上是29位的掩码，找到错点
+修改方法：
+r5上sh run int e0/2
+看到interface Ethernet0/2
+	ip address 134.56.78.41 255.255.255.248
+因修改为：
+	ip address 134.56.78.41 255.255.255.252
+r22的修改方法同上
+
+但是r22和r5虽然掩码错了，但是却是一致的。掩码缺失需要修改，但是为何ospf邻居关系没有起来？
+到r22上查看sh run | se ospf
+其结果为：
+router ospf 1
+	router-id 134.22.22.22
+	passive-interface default
+	no passive-interface Ethernet0/1
+	network 134.22.22.22 0.0.0.0 area 1
+	network 134.56.78.42 0.0.0.0 area 1
+	network 134.56.78.50 0.0.0.0 area 1
+		redistribute ospf 1
+
+发现ospf进程下配置了passive-interface default，这条命令会默认所有ospf的接口都是被passive掉的，即无法和对方建立邻居关系
+r22上只是单独地no passive掉了e0/1，应该e0/0也no passive放出来
+router ospf 1
+	no passive-interface e0/0
+
+这时，两边子网掩码一致，端口也no passive出来，可以看到log信息说邻居关系已经建立
+
+到r3上检查sh ip ospf database sum 134.56.78.48，发现r3也没有ospf路由数据库
+查看r3上的ospf邻居关系：sh ip ospf neigh
+发现r3和r1以及r21的ospf邻居关系正常，也就是说，只要r21宣告了e0/1接口，至少r3能够得到这条路由，因为r3和r21是在同一个区域里的
+到r21上看是否宣告了e0/1: sh ip ospf int br
+发现e0/1是宣告出去了的，但是发现mask是30位的，和r22这一侧的掩码不一致，因此也需要修改r21的e0/1接口的子网掩码为29
+然后检查：sh run int e0/1如下：
+interface Ethernet0/1
+	ip address 134.56.78.49 255.255.255.252
+	ip ospf cost 1
+子网掩码缺失对了，但是这里配了cost值，肯定会出问题，问题后面会说，暂时不删掉。
+
+之前r22和r21没有建立ospf邻居，这时sh ip ospf neigh可以看到它们的邻居关系已经建立
+
+但是r21即使掩码不对，r3也应该能够看到r21的路由信息，出现目前r3的ospf路由数据库看不任何信息的情况只可能是做了路由汇总。
+到r3上sh ip route | in 134.56.78 (考试时路由表会很多，这里include会只显示含有134.56.78的路由信息)
+看到：
+O 	134.56.78.0/24 is a summary, 00:09:48, Null0
+ospf的汇总特性：汇总后会在本地的路由表中产生一个指向空接口的路由，因此看到这条指向空接口的路由，一定是ospf进行了路由汇总
+并且汇总后的网络号134.56.78.0/24是包含了需要的网络号
+查看ospf进程配置：sh run | se ospf，看到：
+router ospf 1
+	router-id 123.3.3.3
+	area 1 range 134.56.78.0 255.255.255.0 	#路由汇总
+	network 134.3.3.3 0.0.0.0 area 0
+	network 134.45.67.6 0.0.0.0 area 0
+	network 134.56.78.37 0.0.0.0 area 1
+应该直接删掉路由汇总
+no area 1 range 134.56.78.0 255.255.255.0
+再检查：sh ip ospf database sum 134.56.78.48
+终于可以看到ospf路由数据库，可以看到：
+area信息
+advertising router: 123.3.3.3(通告路由器，即这条路由是由谁产生)
+link state id(这条路由的网络号)
+掩码
+metric值
+且r3和r5上看ospf数据库应该是一样的，因为同在一个area
+
+
+（未完待续。。视频12:45）
+

@@ -27,4 +27,160 @@ spanning-tree mst 2 priority 0
 [sw3]
 [sw4]
 
-3. 
+3. as12345 ospf
+1)r1要求不要通告自己本地stub的link state信息给邻居，但是能够透出按所有lsa
+2)r1看到所有ospf路由，metric值都是655xx
+［详解］
+r1
+router ospf 12345
+prefix-suppression
+max-metric router-lsa
+
+4. as45678 eigrp
+1)不要求r15 r16 r17应该支持64位点eigrp metric
+2)eigrp路由器之间启用最强认真，使用秘钥ccie
+［详解］
+[r15-r17 sw5,sw6]
+router eigrp cisco
+address-family ipv4 unicast autonomous-system 45678
+af-interface default
+authentication mode hmac-sha-256 ccie
+
+[r17]
+router eigrp cisco
+address-family ipv4 unicast autonomous-system 45678
+af-interface tunnel 0
+no authentication mode
+
+5. as12345 bgp
+1)r2 r3的bgp预配取消了，需要自己配置
+
+6. as45678 bgp
+1)r16-r19面相20003的接口都被划进vrf，并且只能从20003收到默认路由
+［详解］
+[r16-r19]
+router bgp 45678
+address-family ipv4 vrf xxx
+neighbor x.x.x.x remote-as 20003
+neighbor x.x.x.x activate
+neighbor x.x.x.x prefix-list default in
+#network 0.0.0.0 backdoor	#backdoor不需要再做了，因为bgp的默认路由和eigrp的默认路由不在同一张路由表中了
+
+ip prefix-list default permit 0.0.0.0/0
+
+7. ospfv3
+1)不允许使用ipv6 router ospf以及ipv6 ospf 1 area命令
+［详解］
+[r10-r11,sw3-sw4]以sw3为例
+ipv6 unicast-routing
+router ospfv3 1
+router-id 123.203.3.3
+int x
+ospfv3 1 ipv6 area 0
+int vlan 34
+ospfv3 1 priority 254	#sw4为255
+
+＃先配来sw3，则sw3成为了DR，需要配了sw4后在sw3上clear ipv6 ospf process
+
+8. dmvpn
+1)利用vrf接口的连通性配置全局的dmvpn
+[r17]
+int tu 0
+no ip redirects
+tu mode gre multipoint
+tu source s1/0
+tu key 45678
+
+tu vrf xxx
+ip address 10.18.19.1 255.255.255.0
+ip nhrp network-id 45678
+ip nhrp auth 45678key
+ip nhrp map multicast dynamic
+ip nhrp redirect
+ip nhrp holdtime 300
+bandwidth 1000
+delay 1000
+ip mtu 1400
+ip tcp adjust-mss 1360
+no ip split-horizon eigrp 45678
+
+[r18-r19]
+int tu 0
+no ip redirect
+tu mode gre multipoint
+tu source s1/0
+tu key 45678
+tu vrf xxx
+ip address 10.18.19.18 255.255.255.0
+ip nhrp network-id 45678
+ip nhrp auth 45678key
+ip nhrp map multicast 203.45.17.2
+ip nhrp map 10.18.19.1 203.45.17.2
+ip nhrp nhs 10.18.19.1
+ip nhrp shortcut
+ip nhrp holdtime 300
+bandwidth 1000
+delay 1000
+ip mtu 1400
+ip tcp adjust-mss 1360
+
+#注意将tunnel口network进eigrp
+
+9. encryption
+ipsec phase 1
+	isakmp police 10
+	auth preshare-key CCIE
+	encryption aes
+	group 2
+ipsec phase 2
+	esp-aes
+	transport mode
+	transform-set name CCIEXFORM
+	ipsec profile name DMVPNPROFILE
+
+[r17-r19]
+crypto isakmp policy 10
+	encrypt aes
+	auth pre-share
+	group 2
+crypto keyring cisco vrf a
+	pre-share-key address 0.0.0.0 0.0.0.0 key CCIE
+
+crypto ipsec transform-set CCIEXFORM esp-aes
+	mode transport
+crypto ipsec profile DMVPNPROFILE
+	set transform-set CCIEXFORM
+int tu 0
+	tu protection ipsec profile DMVPNPROFILE
+
+10. netflow
+题目取消，变成下面这道题
+给出r17的show命令结果
+r17#sh int | grep 'is up'
+Ethernet0/1 is up, line protocol is up
+Ethernet0/2 is up, line protocol is up
+Ethernet0/3 is up, line protocol is up
+Loopback0 is up, line protocol is up
+Tunnel0 is up, line protocol is up
+Tunnel1 is up, line protocol is up
+#r17sh int | grep 'is up' | wc -l
+6
+［详解］
+r17(config) #shell processing full
+
+11. ntp
+ntp需要开启认证
+[sw3]
+ntp master
+ntp source lo 0
+ntp authenticate
+ntp authentication-key 1 md5 cisco
+ntp trust-key 1
+
+[r10,r12]
+ntp server 2001:123::3:3:3 key 1
+ntp source lo 0
+ntp authenticate
+ntp authentication-key 1 md5 cisco
+ntp trust-key 1
+

@@ -1,0 +1,71 @@
+1. ospf
+[T1]
+[r1-r7]r1 as example
+router ospf 12345
+router-id 123.x.x.x
+network 123.0.0.0 0.255.255.255 area 0
+[T1+]
+r1 
+	lsa
+	see metric 65xxx for all ospf route
+[r1]
+router ospf 12345
+prefix-suppression
+max-metric router-lsa
+
+
+2. eigrp as34567
+[r8-r11,sw3-sw4]r8 as example
+router eigrp 34567
+router-id 123.x.x.x
+network 123.0.0.0 0.255.255.255
+no auto-sum
+
+[sw3-sw4]
+int vl 34
+delay 100
+
+3. eigrp as45678
+[T1]
+[r15-r17]
+router eigrp cisco 
+add ipv4 autonomous-system 45678
+network 123.0.0.0 0.255.255.255
+topology base
+no auto-sum
+
+[sw5-sw6]sw5 as example
+router eigrp 45678
+router-id 123.205.5.5
+network 123.0.0.0 0.255.255.255
+no auto-sum
+
+[r18-r19]r18 as example
+router eigrp 65222
+router-id 123.18.18.18
+network 123.0.0.0 0.255.255.255
+no auto-sum
+eigrp stub
+
+[T1+]
+eigrp use strongest auth, key is ccie
+[r15-r17,sw5-sw6]
+router eigrp cisco
+add ipv4 auto 45678
+network 123.0.0.0 0.0.0.255
+topology base
+no auto-sum
+af-inter default
+auth mode hmac-sha-256 ccie
+
+[r17]
+router eigrp cisco
+add ipv4 auto 45678
+af-ineterface tu 0
+no auth mode
+
+[r18-r19]
+router eigrp 45678
+router-id 123.18.18.18
+network 123.0.0.0 0.255.255.255
+eigrp stub

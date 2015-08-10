@@ -1,0 +1,53 @@
+1. vtp
+[sw1-sw4][T1]sw1 as example, sw2 client, sw3&4 transparent
+vtp mode server 	#t1+: sw1 sw2 transparent, sw3 sw4 server client
+vtp version 2
+vtp domain xxx
+vtp password xxx 	#for '?', ctrl+v first
+
+2. trunk
+[sw1-sw4]
+[sw1]
+int range e2/0-3
+sw trunk encap dot
+sw mo trunk
+int x
+sw mode acc
+sw acc vl x
+int range e3/0-3
+sw mo acc
+sw acc vl 999
+shut
+mac address-table aging-table 7200
+
+3. stp
+[sw1-sw4]
+[T1]sw1 as example
+spanning-tree mode rapid-pvst 	#only 3 state -> rapid-pvst, max 3 instance -> mst
+spanning-tree vlan [odd number] priority 0
+spanning-tree vlan [even number] priority 4096
+spanning-tree portfast default
+spanning-tree portfast bpduguard default
+
+[sw1-sw4]
+[T1+]sw1 as example
+spanning-tree mode mst
+spanning-tree mst config
+name cisco
+instance 1 vlan [odd number]
+instance 2 vlan [even number]
+spanning-tree mst 1 priority 0
+spanning-tree mst 2 priority 4096
+spanning-tree portfast default
+spanning-tree portfast bpdudefault default
+
+4. ppp
+[r18-r19]r18 as example
+int s1/0
+encap ppp
+ppp chap hostname ACME_R18
+ppp chap password ccie
+
+
+
+

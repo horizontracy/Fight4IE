@@ -1,0 +1,66 @@
+r17,r18,r19
+
+1. r17 nhrp server, no split-horizon in eigrp
+2. r18-r19 nhrp client
+3. r17-r19 network tunnel 0
+
+[r17]
+int tunnel 0
+tu mode gre multipoint
+tu source s2/0
+tu key 45678
+
+ip add 10.18.19.1 255.255.255.0
+no ip redirects
+
+ip nhrp network-id 45678
+ip nhrp auth 45678key
+ip nhrp map multicast dynamic
+ip nhrp redirect
+ip nhrp holdtime 300
+
+bandwidth 1000
+delay 1000
+ip mtu 1400
+ip tcp adjust-mss 1360
+
+router eigrp cisco
+add ipv4 autonomous 45678
+topology base
+af-interface tu 0
+no split-horizon
+
+[r18-r19]r18 as example
+int tunnel 0
+tu mode gre multipoint
+tu source s1/0
+tu key 45678
+
+ip add 10.18.19.18 255.255.255.0
+no ip redirects
+
+ip nhrp network-id 45678
+ip nhrp auth 45678key
+ip nhrp map multicast 203.45.17.2
+ip nhrp map 10.18.19.1 203.45.17.2
+ip nhrp nhs 10.18.19.1
+ip nhrp shortcut
+ip nhrp holdtime 300
+
+bandwidth 1000
+delay 1000
+ip mtu 1400
+ip tcp adjust-mss 1360
+
+[r17]
+router eigrp cisco
+add ipv4 autonomous 45678
+network 10.18.19.1 0.0.0.0
+
+[r18-r19]r18 as example
+router eigrp 45678
+network 10.18.19.18 0.0.0.0
+
+
+
+

@@ -1,0 +1,56 @@
+1. ospf
+r10-r11,sw3-sw4
+1)ospf area 
+[T1]r10 as example
+ipv6 unicast-routing
+ipv6 router ospf 1 
+ipv6 router-id 123.10.10.10
+int ex/x
+ipv6 ospf 1 area 10
+int lo 0
+ipv6 ospf 1 area 10
+
+[T1+]no use:
+ipv6 router ospf
+router ospfv3 1
+ipv6 router-id 123.10.10.10
+int ex/x
+ospfv3 1 area 10
+int lo 0
+ospfv3 1 area 10
+
+[sw3-sw4]
+int vl 34
+ipv6 ospf priority 254 	#sw3 254,sw4 255
+
+sw3 is BR, sw4 is BDR
+sw3# clear ipv6 ospf process
+
+2. ipv6 bgp
+1)r12-r14 ipv6 bgp
+	neighbor
+	network lo0 eth0 (ipv4 and ipv6)
+2)r10 and r11 redistribute ospfv3 <--> ipv6 bgp
+	neighbor
+	redistribute
+
+[r12-r14]r12 as example
+ipv6 unicast-routing
+router b 65111
+bgp router-id 123.12.12.12
+neigh [as20001 ipv6 add] remote-as 20001
+add ipv6 
+neigh [as20001 ipv6 add] acti
+network [e0/0 ipv6 add]/64
+network [lo0 ipv6 add]/128
+
+add ipv4
+network 10.x.x.x mask 255.255.255.0
+network 123.12.12.12 mask 255.255.255.255
+
+[r10-r11]r10 as example
+router bgp 34567
+redistribute ospf 1 match internal external
+
+ipv6 router ospf 1
+redistribute bgp 34567

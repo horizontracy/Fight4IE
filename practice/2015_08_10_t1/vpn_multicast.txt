@@ -1,0 +1,33 @@
+1. ip pim sparse-mode
+	ip multicast-routing
+	all eth port
+	r15 lo 0
+	r18-r19 e0/0, tu 0
+	r17 tu 0
+2. r15 rp & bsr candidate
+3. r18-r19 e0/0
+	ip igmp join-group 232.1.1.1
+4. sw5 other ports acc vl 5
+
+[r15-r19]
+ip multicast-routing
+int x
+ip pim sparse-mode
+
+[r15]
+int lo
+ip pim sparse-mode
+ip rp-candidate lo 0
+ip bsr-candidate lo 0
+
+[r18-r19]
+int tu 0
+ip pim sparse-mode
+int e0/0
+ip pim sparse-mode
+ip igmp join-group 232.1.1.1
+
+[sw5]
+int ex/x
+sw acc vl 5
+

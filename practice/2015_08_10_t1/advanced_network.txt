@@ -1,0 +1,65 @@
+1. r20 ssh 
+	no aaa, use rsa crypto
+	username, privilege, password
+	logging events
+	ip ssh session maxstartups 5
+
+	line vty 0 4
+		local login
+		transport input ssh
+		access-list 1 permit 123.10.2.0 0.0.0.255
+		access-class 1 in
+
+[r20]
+username test privilege 1 password test
+ip ssh logging events
+ip ssh session max startups 5
+crypto key generate rsa
+768
+line vty 0 4
+	local login
+	transport int ssh
+	access-list 1 permit 123.10.2. 0.0.0.255
+	access-class 1 in
+
+2. r20 nat INET
+access-list 1
+	10.1.0.0/16
+	10.2.0.0/16
+	access INET through 1.2.3.4
+nat inside source list 1 int lo 0 overload
+[r20]
+access-list 2 permit 10.1.0.0 0.0.255.255
+access-list 2 permit 10.2.0.0 0.0.255.255
+
+ip nat inside source list 2 int lo 0 overload
+
+int e1/0.12
+ip nat inside
+#same for 13,14,15;same for e1/1
+
+int e1/0.99
+ip nat outside
+#same for e1/1.99
+
+3. netflow: r15-r19
+[r17]
+ip cef
+int tu 0
+ip flow egress
+
+ip flow-top-talkers
+top 10
+sort-by bytes
+cache-timeout 10000
+
+4. ntp
+sw3 master, source lo 0
+r10,r12 client(server is sw3, use ipv6 address), source lo 0
+[sw3]
+ntp master
+ntp source lo 0
+[r12,r10]
+ntp server [sw3's lo ipv6 add]
+ntp source lo 0
+

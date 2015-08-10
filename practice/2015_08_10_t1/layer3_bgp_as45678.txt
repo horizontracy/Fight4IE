@@ -1,0 +1,39 @@
+as45678
+1. no IBGP
+2. r15 bgp<-->eigrp
+3. network 0.0.0.0 backdoor
+
+[T1]
+[r15-r19]r15 as example
+router bgp 45678
+no bgp def ipv4-uni
+bgp router-id 123.x.x.x
+neigh 103.45.1.1 remote-as 10003
+add ipv4
+neigh 103.45.1.1 acti
+
+[r15]
+redistribute eigrp 45678
+
+router eigrp cisco
+add ipv4 autonomous 45678
+topology base
+redistribute bgp 45678 metric 10000 100 255 1 1500
+
+aggregate-address 123.20.1.0 255.255.255.0 summary-only
+
+[r16-r19]
+router bgp 45678
+add ipv4
+network 0.0.0.0 backdoor
+
+[T1+]
+r16-r19 to as20003 using vrf
+[r16-r19]r16 as example
+ip prefix-list default 0.0.0.0/0
+rotuer bgp 45678
+add ipv4 vrf xxx
+neigh 203.45.16.1 remote-as 20003
+neigh 203.45.16.1 acti
+neigh 203.45.16.1 prefix default in
+#network 0.0.0.0 backdoor

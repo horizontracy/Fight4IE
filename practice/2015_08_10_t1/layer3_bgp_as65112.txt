@@ -1,0 +1,85 @@
+1. vrf port
+2. bgp for r2,r3
+3. bgp for r20
+	network lo, 10.x.2.0, 10.x.1.0
+	summary only for 123.0.0.0 and 10.0.0.0
+
+[r2]
+ip vrf GREEN
+rd 12:12
+route-target 12:12
+exi
+#same for BLUE/RED/YELLOW/INET
+
+int e1/0
+no shut
+int e1/0.12
+ip add 10.201.12.1 255.255.255.252
+encap dot 12
+ip vrf forwarding GREEN
+#same for BLUE/RED/YELLOW/INET
+
+router b 12345
+neigh 10.201.12.1 remote-as 65112
+neigh 10.201.13.1 remote-as 65112
+neigh 10.201.14.1 remote-as 65112
+neigh 10.201.15.1 remote-as 65112
+neigh 10.201.99.1 remote-as 65112
+
+add ipv4 vrf GREEN
+neigh 10.201.12.5 acti
+exi
+#same for BLUE/RED/YELLOW/INET
+
+[r20]
+int e1/0
+no shut
+int e1/0.12
+ip add 10.201.12.5 255.255.255.252
+ip vrf forwarding GREEN
+encap dot 12
+#same for BLUE/RED/YELLOW/INET
+
+int e1/1
+#same as e1/0
+
+router bgp 65112
+neigh 10.201.12.1 remote-as 12345
+neigh 10.201.13.1 remote-as 12345
+neigh 10.201.14.1 remote-as 12345
+neigh 10.201.15.1 remote-as 12345
+neigh 10.201.99.1 remote-as 12345
+neigh 10.201.12.5 remote-as 12345
+neigh 10.201.13.5 remote-as 12345
+neigh 10.201.14.5 remote-as 12345
+neigh 10.201.15.5 remote-as 12345
+neigh 10.201.99.5 remote-as 12345
+
+add ipv4 
+neigh 10.201.12.1 acti
+neigh 10.201.13.1 acti
+neigh 10.201.14.1 acti
+neigh 10.201.15.1 acti
+neigh 10.201.99.1 acti
+neigh 10.201.12.5 acti
+neigh 10.201.13.5 acti
+neigh 10.201.14.5 acti
+neigh 10.201.15.5 acti
+neigh 10.201.99.5 acti
+
+neigh 10.201.12.1 default-originate
+neigh 10.201.13.1 default-originate
+neigh 10.201.14.1 default-originate
+neigh 10.201.15.1 default-originate
+neigh 10.201.12.5 default-originate
+neigh 10.201.13.5 default-originate
+neigh 10.201.14.5 default-originate
+neigh 10.201.15.5 default-originate
+
+network 123.20.20.20 mask 255.255.255.255
+network 10.20.1.0 mask 255.255.255.255
+network 10.20.2.0 mask 255.255.255.255
+
+aggregate-address 123.0.0.0 255.0.0.0 summary-only
+aggregate-address 10.0.0.0 255.0.0.0 summary-only
+

@@ -1,0 +1,29 @@
+mpls ldp
+1. mpls ldp router-id lo 0 force
+	int x
+		mpls ip
+2. r2,r3,r6,r7
+	no mpls ip propagate-ttl
+3. r1 is rr, r2,r3,r6,r7 use iBGP
+
+[r1]
+router bgp 12345
+add vpnv4
+neigh 123.2.2.2 acti
+neigh 123.3.3.3 acti
+neigh 123.6.6.6 acti
+neigh 123.7.7.7 acti
+neigh iBGP route-reflector-client
+
+[r2,r3,r6,r7]
+router bgp 12345
+add vpnv4
+neigh 123.1.1.1 acti
+
+no mpls ip propagate-ttl
+
+[r1-r7]
+mpls ldp router-id lo 0 force 
+int x
+mpls ip
+

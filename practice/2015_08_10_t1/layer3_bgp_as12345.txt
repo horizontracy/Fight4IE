@@ -1,0 +1,39 @@
+bgp as12345
+[T1]
+1. bgp neighbor
+	r1 rr
+	r2,r3,r6,r7 client
+
+[r1]
+router  b 12345
+no bgp default ipv4-unicast
+bgp router-id 123.1.1.1
+bgp log-neigh
+
+neigh iBGP peer-group
+neigh iBGP remote-as 12345
+neigh iBGP update-source lo 0
+
+neigh 123.2.2.2 peer-group iBGP
+neigh 123.3.3.3 peer-group iBGP
+neigh 123.6.6.6 peer-group iBGP
+neigh 123.7.7.7 peer-group iBGP
+
+add ipv4
+neigh 123.2.2.2 acti
+neigh 123.3.3.3 acti
+neigh 123.6.6.6 acti
+neigh 123.7.7.7 acti
+neigh iBGP route-reflector-client
+
+[r2,r3,r6,r7]
+router  b 12345
+no bgp default ipv4-unicast
+bgp router-id 123.x.x.x
+bgp log-neigh
+
+neigh 123.1.1.1 remote-as 12345
+neigh 123.1.1.1 update-source lo 0
+
+add ipv4
+neigh 123.1.1.1 acti

@@ -1,0 +1,27 @@
+phase1
+isakmp policy 10
+encrypt aes
+auth pre-share
+key CCIE
+group 2
+
+phase2
+esp-aes
+transport mode
+transform-set CCIEXFORM
+ipsec profile DMVPNPROFILE
+
+[r17-r19]
+crypto isakmp policy 10
+	encrypt aes
+	group 2
+	auth pre-share
+crypto isakmp key CCIE address 0.0.0.0
+
+crypto ipsec transform-set CCIEXFORM esp-aes
+	mode transport
+crypto ipsec profile DMVPNPROFILE
+	set transform-set CCIEXFORM
+int tunnel 0
+	tunnel protection ipsec profile DMVPNPROFILE
+

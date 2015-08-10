@@ -3,6 +3,9 @@ ts1 layer2
 题目要求：
 user r101 should successfully traceroute server r100 behind sw3, 3 hops
 并附有一张trace的截图
+1 172.16。100.1
+2 172.16.0.21
+3 server1.bancobank.org (172.16.200.200)
 
 错误点：
 1. sw2的e1/0安全绑定的mac地址错误

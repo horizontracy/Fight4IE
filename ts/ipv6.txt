@@ -1,0 +1,89 @@
+ipv6
+题目
+user r103 traceroute r26的loopback口
+
+截图：
+PC103# traceroute 2001:CC1E:ABCD:26::26
+1 2001:CC1E:ABCD:25::1
+2 2001:CC1E:ABCD:2225::22
+3 2001:CC1E:ABCD:2622::26
+
+错误点
+1. r25的bgp的network掩码写错
+2. r22上修改route-map的下一跳地址，并调用在bgp的neighbor上
+3. r25上修改route-map的下一跳地址
+
+［详解］
+这是一道送分题，考试时候r26是不可以点的，所以只要邻居关系正常，该宣告的网段宣告出来就ok，该改的下一跳改掉就ok
+
+首先到r25上看ipv6的bgp的邻居关系和路由表
+sh bgp ipv6 unicast sum
+看到：
+134.56.78.17 	... state 1 	#状态ok，说明bgp邻居关系建立起来了，另外ip地址是ipv4的，说明是在ipv4的协议下激活了ipv6的邻居
+同样在r22上看：
+sh bgp ipv6 unicast sum 	 	#这里就能够看到两个地址建的不一样，一个是在ipv6的地址下建立的，一个是在ipv4的地址下建立的
+
+知识点：如果是用ipv4的地址传递ipv6的路由的话，在送路由出去的时候，要修改路由的下一跳为自己出口的全球单播（global unicast address）地址
+
+看图r22和r25是通过ipv4的地址建立的邻居，r22和r26是通过ipv6的地址建立的邻居
+考试的时候不排除r22和r26也是用ipv4的地址建立的邻居
+
+这里重点关注r22和r25之间，ipv4建立bgp邻居容易出问题
+
+传路由以前，先确保本地宣告的路由正确，即看本地的bgp表中有没有这条路由即可
+在r25上：
+sh bgp ipv6 unicast 	＃看不到r25本地的2001:cc1e:abcd:25::/64的路由，说明宣告一定有问题
+sh run | se bgp 		#可以看到宣告了上面说的这条路由，但是掩码是128，找到错点，修改是先no掉，在刷一遍ipv6地址和掩码
+知识点：bgp宣告的时候掩码一定要正确，否则宣告是失败的
+小技巧：bgp掩码不会算，那就看直连路由（sh ipv6 route，找c路由via e0/1的），直接把这个ipv6地址连同掩码一起复制
+检查一下：
+sh bgp ipv6 unicast 	#已经能够看到25的ipv6路由，并且有>号，而发现r26的ipv6的路由没有>号（这是r26的路由由r22传过来的），严重怀疑其下一跳有问题
+
+到r22上：
+sh bgp ipv6 unicast 	＃先看r22是否学到了刚才r25宣告出来的路由，发现r22没有学到25的路由，宣告了而没有在其他路由器上看到学到，无非就是做策略干掉了，或者是下一跳不多
+sh run | se bgp 		＃在ipv6协议下看不到改了任何下一跳，而由r26送到r22的路由是应该修改下一跳的
+sh route-map 			＃查看本地route-map，发现除了上一题修改的route-map inet外，还有NEXT-HOP的route-map
+						＃这里已经设了一跳ipv6的next-hop，这里需要保证ipv6地址就是r22送路由出去的接口的ipv6地址，即r22的s1/0
+sh ipv6 int s1/0 		＃发现全球单播地址global unicast address写得不对，应该为22，写成了25
+修改：
+route-map NEXT-HOP permit 10
+no set ipv6 next-hop 2001:CC1E:ABCD:2225::25	＃一定要删掉错误的，否则两个都会存在
+set ipv6 next-hop 2001:CC1E:ABCD:2225::22
+改完后，clear bgp ipv6 unicast * soft
+修改好了后到r25上确认下：
+sh bgp ipv6 unicast 	＃发现没有变化，汗。。
+重新在r22上：
+sh run | se bgp 	＃发现route-map忘记挂上去了。。
+router bgp 12345
+add ipv6
+nei 134.56.78.18 route-map NEXT-HOP out
+重新clear bgp ipv6 unicast * soft
+再重新在r25上检查：
+sh bgp ipv6 unicast 	＃看到了26的路由也有了>号，搞定错误
+
+这个时候r22上的路由已经正确了，r22还没有收到r25的路由，因此要在r25上看bgp配置有什么问题，应该也是做了同样的route-map
+在r25上：
+sh run | se bgp 	＃看到route-map NEXT-HOP out
+sh route-map NEXT-HOP 	＃这里写的next-hop是22，
+sh ipv6 int s1/0 ＃全球单播地址是25，暴露了route-map next-hop的的错点，和r22同样的错点
+修改：
+route-map NEXT-HOP permit 10
+no set ipv6 next-hop 2001:CC1E:ABCD:2225::22
+set ipv6 next-hop 2001:CC1E:ABCD:2225::25
+
+clear bgp ipv6 unicast * soft 	＃完事后记得软清bgp
+在r22上验证：
+sh bgp ipv6 unicast 	＃看到>都有了，排除掉了错误
+
+验证最终的截图效果
+在r103上
+sh ipv6 int br 	＃能够看到e0/0有2001:CC1E:ABCD:25...的ipv6地址
+sh run int e0/0 	#看到ipv6 address autoconfig default，即自动获取地址
+sh ipv6 int e0/0 	#可以看得到默认网关的信息，以上三句都是题外话。。。这里看不到，是因为这里是用路由器模拟的。。ipv6的默认路由是::/
+现在有默认路由、也有地址、路由也学到了，可以验证最终结果
+trace 2001:CC1E:ABCD:26::26 	#看到截图效果
+
+总结：注意下一跳和宣告的掩码
+
+
+

@@ -1,0 +1,262 @@
+mpls
+题目
+pc104 traceroute pc105路径绕行r7
+pc105访问8.8.8.8路径通过r7并做nat
+以上需求如果r7 down了走r8
+
+截图：
+pc104# trace 172.16.201.200
+13 hops
+
+pc105# trace 8.8.8.8
+10 hops
+
+备份路径：
+pc104# trace 172.16.201.200
+13 hops
+
+pc105# trace 8.8.8.8
+12 hops
+
+错误点：
+1. 使左右两侧site都能获得r7下发的默认路由
+2. 使r7、r8能够获得左右两侧site的明细路由
+3. 保证骨干网mpls的标签转发路径正常
+4. 保证r7、r8到8.8.8.8的连通性正常
+5. 保证r7、r8的nat配置正确
+
+详解：
+本题是ts里难度最高的一题，也是4分题
+先看需求，第一个需求是pc104能够trace pc105，且绕行r7，其路径为：
+104 sw3 r9 r5 r1 r3 r7 r3 r1 r2 r6 r10 sw4 105
+且当r7 down了后能够绕行r8完成，其路径为：
+104 sw3 r9 r5 r1 r2 r4 r8 r4 r2 r6 r10 sw4 105
+进入r7和进入r8需要特别注意：r7和r8分别起了3个子接口，拓扑图上列出来，其中2个是通往运营商的vrf口（图上绿色和蓝色的线），考试时不是彩色的，需要靠子接口号来区分
+考试时子接口号和实验是一致的，都是123、124、125，125是访问公网的，123和124是连接vpn的
+截图中可以看到，r3->r7是通过123的线路到r7，从124的线路从r7返回，r4->r8也是123去到r8，124回到r4
+这里ospf area1和area0可以认为是运营商
+数据包能够从123线路从r3->r7，说明路由是从123的线路从r7传到了r3
+反过来，r7要想把数据从r7从124线路送到r3，那么r7去往目的地的路由一定是从124线路由r3传到了r7
+需要理解：数据的走向和路由的走向是相反的
+
+这里r7类似config中r20的角色
+在版本中，不同site间访问是通过绕行r20实现，是r20通过下放默认路由给每一个site达到绕行r20的需求
+每个site都学不到其他site的路由，只能过学到默认路由，因此只能走默认路由绕行r20，由r20收集所有细路由进行转发
+ts中也是一样
+首先要保证104的路由不能通过运营商直接传给r6到另外一个site，105的路由也是一样
+而104和105的路由在运营商里是走的vpnv4，进入哪一个vrf取决于路由上携带的rt和目的地的rt
+当路由上携带的rt和目的地rt一致的时候，那么这条路由才会被放进相应的vrf里面去
+那么说2个site不能直接互相学到路由，意味着r5 vrf的export的rt不能等于r6的vrf的import的rt；反过来一样，r6 export rt 不能等于 r5 import rt。
+这是r5和r6的import和export的限制。
+和版本中r20一样，r7应该下放一条默认路由出来。由前面的分析指导，默认路由应该走123线路所建立的bgp邻居送出来到r3，并且存在r3的123的vrf里面（图上是123 vrf bancobank_tospoke）
+之后这个默认路由被从r3中导出成为vpnv4路由，这个路由会带上一个rt，这个rt是123 vrf export rt。因此r3的vrf 123 export rt 要等于r6 vrf import rt。
+
+目标1:2个site都学到r7出来点默认路由
+看默认路由：正向看（r7->104）和反向看(104->r7)
+先到r3上，如果r7推送默认路由给r3，会存在r3的vrf路由表中
+在r3上
+sh ip vrf 	＃看本地有2个vrf，123对应是bancobank_spoke
+sh ip route vrf bancobank_tospoke  	＃r7推送的默认路由应该存放在这里，但是这里没有默认路由，应该到r7上看bgp邻居关系是否正常
+在r7上
+sh ip bgp sum 	#看到邻居和r3有1个邻居，这里只有1个邻居肯定是有问题的，因为要通过123和124分别建立邻居，找到错点
+sh run | se bgp 	#124的邻居没有acti，修改去ipv4下activate 124，这个是顺手先解决124的邻居，回到正题，看123的邻居关系和收不到默认路由的问题
+sh run | se bgp 	#看默认路由为何在r3上收不到
+知识点：bgp通告默认路由的2种方法：
+1是直接指定neighbor做default-originate（直接定向朝neighbor发默认路由），
+2是先有个static路由，然后重分发static路由进入bgp，然后再到bgp里做一个开关default-information originate
+由于ts需要遵循原有逻辑，看到已经重分发了static路由，所以是方法2，那么看看是否有static路由，以及bgp里是否做了开关
+sh ip route 	＃看到s* 0.0.0.0的静态默认路由，有理由怀疑是开关没有做，到r7上打开开关
+router b 65100
+add ipv4 	#考试时如果有ipv4，就陪在ipv4下面，如果没有，就配置router bgp下面，据说目前考试是没有ipv4的
+default-information originate
+做好后检测
+sh ip bgp 	#在自己的bgp表中能看到0.0.0.0路由，有>
+			＃题外话：因此只要是neighbor，都会通告默认路由，因此会朝vrf 123和vrf 124同时通告，这是ok的，只要r1的rt控制只让123走就可以了
+回到r3上
+sh ip route vrf bancobank_spoke 	#看到bgp的默认路由已经有了
+接下来，默认路由应该被r3传给r5，放入r5的vrf中
+在r5上
+sh ip vrf  	#看vrf名字叫bancobank_spoke
+sh ip route vrf bancobank_spoke 	#看不到默认路由
+sh ip bgp vpnv4 all 	#看vpnv4的路由表中有没有默认路由，看到是bancobank_spoke有的0.0.0.0
+vpnv4路由表中有默认路由，那么为什么路由表中没有呢？怀疑这是因为倒入rt不匹配造成的。
+sh ip bgp vpnv4 all 0.0.0.0 	#希望看看默认路由携带的rt，要看rd为101:102下的rt
+看到101:102的rt信息为：RT：65100:100，因此r5应该有这样的rt才能让默认路由进入vrf路由表
+sh ip vrf detail	＃看r5的vrf导入rt，看到export rt和import rt，看到import时65100:101，和上面的65100:100不符
+把rt写入：
+ip vrf bancobank_spoke
+route-target import 65100:100
+验证：
+sh ip vrf detail	#看到import rt为65100:101和65100:100
+sh ip vrf route 	#看vrf路由表，能看到bgp的0.0.0.0
+这时已经看到vrf路由表中有默认路由了，因此只要邻居关系正常，就可以把默认路由传递到r9，然后r9重分发进ospf，才能让104学到
+
+在r9上确认：
+sh ip route bgp 	#看到了0.0.0.0
+在sw3上，因为sw3运行ospf，因此应该是从ospf学到被重分发的0.0.0.0（O*E2）
+sh ip route ospf  	#看到O*E2 0.0.0.0
+至此，r7->104的默认路由达成
+
+同样的排除在右侧做r8->105 0.0.0.0
+在r6上：
+sh ip bgp vpnv4 all 	＃看不到任何vpn路由，怀疑vpn邻居有问题
+sh ip bgp vpnv4 all sum		#只有r10的邻居关系，且状态为idle，即vpn邻居没有建立
+sh run | se bgp 	＃只在ipv4下激活了.3和.5，没有看到vpnv4的address-family，修改：在vpnv4下激活.3和.5
+sh ip bgp vpnv4 all sum 	＃看到.3和.5的邻居起来了，但是state为0，其含义为没有从这个neighbor收到任何一条路由，这时如果sh ip bgp vpnv4 all的话，是没有路由的
+那么为何r6没有收到路由呢？
+在r5上：
+sh ip bgp vpnv4 all 	＃看到有多条路由，且都有>，即可以发出去
+分析：
+在表中看不到路由，不代表对方没有发送给你路由，也有可能是你自己拒绝接收了路由
+当导入rt与路由携带的rt不一样的时候，默认情况下，这个vpn路由是不接收的。
+那为什么r5的路由携带的rt和导入的rt不一样它却接收了呢？因为r5的角色比较特殊，是vpnv4的路由反射器。这是反射器的特点。
+而r6不是反射器，所以怀疑时它的导入rt和路由携带的rt不一致，导致了它收不到路由。
+在r6上
+sh ip vrf detail 	＃看到导入的rt是65100:102，不是刚才补在r5上的65100:100，需要补上。r5和r6都有导入rt的问题。
+修改：
+ip vrf bancobank_spoke
+route-target import 65100:100
+检查：
+sh ip bgp vpnv4 all 	#立刻看到默认路由
+sh ip route vrf bancobank_spoke 	#看到默认路由，只要r6和r10的邻居关系是好的，它就能把默认路由送给r10
+但是前面看过：
+sh ip bgp vpnv4 all sum 	#和r10邻居关系时idle
+在r10上
+sh run | se bgp 	＃配置正常
+sh ip bgp sum 		#邻居是active的
+回到r6上
+sh run | se bgp   #配置ok，邻居建立在vrf下
+sh ip int br 	＃发现e0/1被shutdown了，修改：int e0/1; no shut;修改后看到邻居起来了。
+到r10上看是否学到默认路由：
+sh ip route bgp 	#看到默认路由
+在sw4上看ospf重分发的默认路由：
+sh ip route ospf  #看到O*E2的默认路由，ok
+
+第二个目标是要反过来，让r7能够学到下面104所在的网络的路由，r8和105也是
+这里需要用124的bgp邻居关系送到r7
+以104->r7为例，104的路由是在r5的vrf路由表中，被r5导入vpnv4，且携带的rt为r5的export rt
+因此在r3的import rt应该和r5的export rt一致
+105->r8与左侧类似。
+检查r5的export rt：
+sh ip vtf detail 	＃看export rt：65100:101；同样地，r6为65100:102
+在r3上
+sh ip vrf detail 	＃看到124的vrf中export rt和import rt都没有做，这里只关心import rt，应该配置为r5的export rt
+修改：
+ip vrf bancobank_spoke
+route-target import 65100:101
+route-target import 65100:102
+用sh ip vrf detail验证
+做通vrf rt后，到r3上
+sh ip bgp vpnv4 all 	#关注124的路由，bancobank_hub，发现有172.16.101.0路由，没有172.16.201.0路由
+在r6上：
+sh ip bgp vpnv4 all 	＃发现r6本地都没有201的路由
+在r10上：
+sh ip route ospf  	#发现r10上都没有201的路由
+在sw4上
+sh ip ospf neigh 	#看到通过vlan100和r10建立了邻居，那为什么邻居关系有了，而r10没有学到路由呢？看是否宣告了接口
+sh ip ospf int br 	＃看e1/0所在的vlan是否被宣告了，即vlan200是否被宣告了
+sh vl br 	#看e1/0是属于哪个vlan，属于vlan200，看到vlan200是down的，找到错点
+修改：
+int vl 200; no shut; 	#发现报错，说ip assignment不正确，和vlan201重叠了，发现vlan201也是同样的ip地址
+sh run int vl 201 	#看vl201的配置，发现要从172.7.7.7和172.8.8.8拿ip
+考试时看标注的是用vl200还是vl201，如果用vlan200，则把vlan201上面的help address刷入vlan200，然后删掉vl201
+int vl 200
+ip heler-address 172.7.7.7
+ip heler-address 172.8.8.8
+no shut
+no int vl 201 	#至此不报错
+在r10上看学到了路由没有：
+sh ip route ospf 	#发现学到了201的路由
+在回到最早的r3和r7上是否学到201的路由：
+在r3上
+sh ip bgp vpnv4 all 	#看到101和201的路由都有
+在r7上
+sh ip route bgp 	#也都有
+这时候应该可以回到r104上trace验证了：
+在r104上
+sh ip int br 	＃trace前准备，看下有没有ip，发现没有。。。又是dhcp，方法与前面类似，找到是从r7和r8上拿地址，然后在104上加ip dhcp client client-id e0/0
+验证mac和client-id是否正确
+改好后，就能够拿到地址
+在r105上，同样的问题再重复一遍，dhcp。。。修改方法略。
+把ip的问题解决后，在104上trace：
+trace 172.16.201.200 	#看到13跳，和截图一致
+
+至此需求1完成一半，相同的问题在右侧也要做。需求1完成。
+
+考试时关于r4、r6备份路径的坑：
+r4和r6右侧的e0/2都被宣告进了ospf，因此右侧的路径，也可以走ospf，而且默认对cost值为10，而r4 r2 r6这条路径的cost值为20，默认是要走r4（e0/2）->r6(e0/2)
+而这里的mpls标签是没有配在r4和r6的e0/2上的（area0中间的部分），路由指向右侧，而没有mpls标签，那么mpls断路了。
+有两种修改方法：
+1。 对r4和r6的e0/2做mpls ldp
+2。 修改r4<->r6的cost值大于20，让路由强行绕行r2
+考试时要看给的备份路径的截图的路径，选择用哪种改法。
+
+继续说需求2，需要105访问r26下面的8.8.8.8，且nat经过r7
+105先走到r7，然后r7上做nat换成公网ip，再访问8.8.8.8
+
+这个题的思路是先要确保r7、r8能够访问8.8.8.8
+在r7上：
+ping 8.8.8.8 	#连通性ok！假如没有通，那么很可能是125的线路没有被r3宣告到bgp协议中
+特别记得，不要在r7上建立125的bgp邻居，bgp邻居只存在vpn的线路123和124。千万记得！
+
+在r7上检查nat配置：
+sh run | se nat
+看到：
+ip nat inside
+ip nat outside
+ip nat source list 1 int e0/0.123 overload
+sh run int e0/0.123 	#看到ip nat inside没有写，错点
+修改：
+int e0/0.123
+ip nat inside
+sh run int e0/0.125 	＃125是连接公网的，因此应该有ip nat outside，这里是有的，ok
+检查翻译规则：
+sh run | se nat
+看到：
+ip nat source list 1 int e0/0.125 	＃少了inside！错点
+修改为：
+no ip nat source list 1 int e0/0.125
+ip nat inside source list 1 int e0/0.125 overload
+在105上检查：
+trace 8.8.8.8 	#可能很慢，原因是在做dns解析，耐心等，然后发现到r7上没有出去
+到r7上，再次检查nat
+sh run | se nat
+inside是ok了，那么就剩下list的问题了
+sh ip access-list 1
+看到10 permit 172.16.201.0，没有跟掩码
+修改：
+no acc 1
+acc 1 permit 172.16.201.0 0.0.0.255
+搞定后回到105上重新trace 8.8.8.8，连通性ok！10跳。
+有同学说104 trace 105弹出了域名，如果有域名，那么看104的dns（考试应该就在r7上），然后如果ip host不一致的话，到r7上修改。
+
+同学说：r3指向r21的静态路由打成255，战报上有说到。
+在r3上：
+sh ip route static
+看到：
+s 	123.5.5.5/32 
+考试时就是这样：
+r3上有2条静态路由，去r5的lo0，做了负载分担，一条指向r1，另一指向r21。应该修改。方法如下：
+在r3上
+sh run | se ip route 	＃指向r1的是正确的，处理另外一条路由
+修改：
+ip route 123.5.5.5 255.255.255.255 134.56.78.38 255 	#在最后加上255，让其实效
+检查：
+sh ip route static 	＃发现只有1条静态路由了
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

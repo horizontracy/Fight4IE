@@ -33,8 +33,9 @@ r12# traceroute 123.3.3.3
 r12# traceroute 134.21.21.21
 1 	123.45.67.46
 2 	123.45.67.13
-3 			 .6
-4 			 .38
+3 			 .1
+4 			 .6
+5 			 .38
 
 错误点
 1. r12没有开启maximum－path 2
@@ -67,7 +68,16 @@ r21和r22：这两台设备负责把从r26学到的路由发送给内部r3、r5�
 看到第一跳选了.45，没有负载分担
 查看bgp表，看为什么选了.45
 sh ip bgp 8.8.8.8 	#看8.8.8.8这条路由的详细参数，这里有个8项参数
-看到.45和.46的路由，不同之处在于：.45有'best'
+8项参数为：
+1. weight			＃这里没有配
+2. local-pref
+3. is local
+4. as-path length 	#数有几个as号，这里都是2个
+5. origin 		＃起源，这里都是IGP（IGP的意思是在最早的源头是被network进来的，而不是重分发进来到）
+6. med 	 		＃括号外面的metric值是med，是优先于括号里面的metric先做
+7. neigh类型 	＃
+8. IGP
+
 发现所有参数都一致，即8项参数都一致，这里已经满足负载分担的前提了，怀疑maximum-path开关没有开
 sh run | se bgp
 发现没有做maximum-path
@@ -81,5 +91,193 @@ sh ip bgp
 sh ip route 	#看到路由负载分担，要trace出负载分担，路由表中一定是负载分担的
 再trace一次验证，对比截图，每一跳都是一致的，8.8.8.8解决
 
-再trace 194.1.1.1 probe 2
-(未完待续。。。视频9:50)
+再在r12上
+trace 194.1.1.1 probe 2
+看到：
+1 	123.45.67.45
+ 	123.45.67.46
+2 			 .9
+			 .13
+3 			 .1
+4 			 .6
+5 		  .78.38
+6 		  .78.6
+最后3跳走的路径不对，走了r3-》r21出去，而题目的路径要求为r5-》r22出去
+从trace结果可以看到，从r12到r4和r5的路径是对的，而离开r2-》r1后出口是不对的
+这个时候的思路是到r4和r6上看路由的下一跳是什么
+在r4上
+sh ip bgp
+看到：
+* i 194.1.1.10 	134.21.21.21
+*>i 			134.21.21.21
+发现194.1.1.0这条路由的下一跳都是134.21.21.21
+在r6上
+sh ip bgp
+也看到：
+* i 194.1.1.10 	134.21.21.21
+*>i 			134.21.21.21
+前面在ospf这题介绍环境时说过路，r3、r5是路由反射器，因此r3和r5认为哪条路由好，就选哪条路由
+从r4和r6的表现来看，一定是r3和r5一致认为，r21的路径更优，因此要到r3和r5上看bgp路由
+在r3上：
+sh ip bgp 
+看到：
+*>i 194.1.1.10 	134.21.21.21
+194.1.1.0只拿到了一条路由，没有从r22来点路由，找到错点
+这里只拿到一条路由，只有2种可能：1. 没有和r22建立bgp邻居；2. r22自己都认为r21的路由更好
+知识点：bgp的路由只有打了‘>’的路由才可以传给其他人
+因此当r22自己的bgp路由没有>时，自己的bgp路由是不会传给其他人的，这样其他人也收不到bgp路由
+因此在r5上确定bgp邻居：
+sh ip bgp sum
+看到：
+123.3.3.3
+123.4.4.4
+123.6.6.6
+123.22.22.22
+发现和r22的邻居是有的
+再在r3上看：
+sh ip bgp sum
+看到：
+123.4.4.4
+123.5.5.5
+123.6.6.6
+123.21.21.21
+发现邻居关系也是正常的
+因此刚才说对2种可能的错误的第一种被排除了，所以看看第二种错误是否可能
+在r22上：
+sh ip bgp
+看到：
+*>i 194.1.1.10 	134.21.21.21 	＃来源于r21，>号在这里，找到错点，即r21自己本地的路由失去了>，没有能力传给别人
+* i 			134.56.78.14 	＃来源于r26
+排除的思路是让r22优选自己本地的路由，让其他人也要优选r22的路由，这样才能满足截图要求
+在r22上
+sh ip bgp 194.1.1.0 	＃查看这条路由的具体信息
+看到：
+r21的bgp路由的med为metric 21
+r22的bgp路由的med为metric 22
+因此在r22本地就优选来r21的bgp路由，找到错点
+那么为什么这个med值不一样呢？默认情况下是不带med的，这个值一定是设置上去的
+在r22上
+sh run | se bgp
+在ipv4的协议下看到
+neighbor 134.56.78.14 route-map inet in 	#有一个r26的in方向的route-map
+在r22上
+sh route-map inet
+看到：
+match clauses: 		＃没有match语句，其含义为match所有in方向的路由，把它们的metric值涩味22
+set clauses:
+	metric 22
+在r21上看同样的问题
+sh run | se bgp
+看到ipv4协议下也有
+neighbor 134.56.78.6 route-map inet in
+sh route-map inet
+看到：
+match clauses:
+set clauses:
+ 	metric 21
+和r22是一样的，没有match语句，同时metric值设的是21，如果不设metric值，metric为0，那么就更优了，所以不应该在r21上做改动
+所以应该在r22上做修改route－map，考试的时候可能写一些前缀列表或者访问控制列表
+匹配路由的话，前缀列表和访问控制列表都可以的，这里用前缀列表
+在r22上
+ip prefix-list 194 deny 194.1.1.0/24
+ip prefix-list 194 permit 0.0.0.0/0 le 32 	#这个就是前缀列表写any的写法
+route-map inet permit 10  			＃记得写permit 10
+ match ip address prefix-list 194 	＃记得写prefix－list，这样才是用前缀列表，否则用的是访问控制列表
+sh route-map inet 	#show出来检查
+看到：
+match clauses:
+	ip address prefix-lists: 194	＃其含义为：只有匹配194的前缀列表的路由才设置metric为22
+set clauses:
+	metric 22
+再在r22上检查prefix－list
+sh ip prefix-list
+看到：
+ip prefix-list 194..
+	seq 5 deny 194.1.1.0/24
+	seq 10 permit 0.0.0.0/0 le 32
+这样的写法的作用是：194.1.1.0的路由不会被match到，因此metric值不会被改为22
+那么没有被match的路由会怎么样呢？这个route-map不光光是设置metric值，还控制了哪些路由能够进来
+所以这样设置的话，194没有被第一条前缀列表放通，其路由是收不到的。要想路由进来，必须在route-map中写一个permit 20
+在r22上
+route-map inet permit 20
+记得在route-map写完后
+clear ip bgp * soft
+再检查：
+sh ip bgp 194.1.1.0 
+看到best已经打在了指向r26的这一边，其metric为0
+sh ip bgp
+能够看到：
+* i 194.1.1.0 	134.21.21.21 	＃
+*>i 			134.56.78.14 	＃>号已经在下面了，这样路由才能传给别人
+在r5上再检查：
+sh ip bgp
+看到：
+* i 			134.56.78.14 	＃metric为0
+*>i 194.1.1.0 	134.21.21.21 	＃metric为21，发现在r5上还是选择了r21，为什么r5还是选择了r21呢？
+sh ip bgp 194.1.1.0
+看到：
+best是在r21上点
+其原因是在括号里，括号外的metric是med，括号里的metric值是去下一跳的metric值，这里r22的路由的括号里斯（inaccessible），即下一跳不可达，找到错点
+前面已经说路，这是因为在r22指向r5的时候没有做next-hop-self
+在r22上
+sh run | se bgp
+看不到next-hop-self
+router bgp 12345
+addr ipv4
+neigh 123.5.5.5 next-hop-self
+再到r5上检查：
+sh ip bgp 
+看到：
+*>i 194.1.1.0 	134.22.22.24 	#只剩r22的路由了，如果看不到到话，在r22上clear ip route bgp * soft
+只剩r22的原因和刚才一样，一定是r21也认为r22的路由号，所以在r4、r6上也是一样的效果
+这时候再到r12上检查：
+traceroute 194.1.1.1 probe 2 	#能够看到和截图一样的效果，错点排除
+
+在r12上继续验证
+trace 134.21.21.21
+看到第一跳负载分担了
+到r6上看bgp配置
+在r6上
+sh run | se bgp
+看到ipv4下配了：
+neigh 123.45.67.44 route-map MED out 	#配了出方向点MED route-map
+sh route-map MED
+看到permit 10配了123的前缀列表，permit 20配了134的前缀列表
+sh prefix-list 134
+看到：
+ip prefix-list 134
+	seq 5 permit 134.0.0.0/8 le 32 	#这个范围是134.x.x.x/8-32，因此134.21的路由一定在这里面，被打了metric200
+同理，在r4上检查：
+sh run | se bgp
+也在ipv4下看到route-map MED out的配置
+sh route-map MED
+也有134的prefix，如果匹配，也设置metric为200
+所以解体思路是，如果想走r4的话，就要把r4的metric值改大一点
+在r4上
+route-map MED permit 20
+set metric 201
+clear ip bgp * soft 	#设置好后清下bgp，记得带soft
+改好后到r12上验证：
+sh ip bgp
+这时应该看到到134.21.21.12的路由不负载了
+看到：
+*> 	134.21.21.21 	123.45.67.46
+* 					123.45.67.45
+这里没有m号，所以不负载了
+在用traceroute检查，可以看到截图效果，排除错误
+
+在r12上
+trace 123.3.3.3
+结果和截图一致，没有错误
+
+总结：
+r4和r6出方向的MED
+r21和r22上的MED和local-pref，med时越小越好，localpref是越大越好
+
+
+
+
+
+
+
+

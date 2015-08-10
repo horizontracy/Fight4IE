@@ -1,0 +1,176 @@
+dmpvn
+题目
+server r102要能够访问到user r106，并且user r107 trace user r106 4跳
+
+trace的截图
+r107#trace 200.100.2.200
+1 200.100.3.29
+2 200.100.3.1
+3 200.100.88.18
+4 USER106.ubermarket.com (200.100.2.200)
+
+错误点
+1. 查看r15、r17、r18、r19的nhrp配置，修改正确
+2. r15上有重分发直连造成tunnel接口翻动
+3. 修改terminal设备的dhcp命令，检查r15和r16的dhcp pool，使得terminal设备拿到正确的ip地址
+4. r13接口有acl，需要放通gre、udp500、esp
+5. 补全phase3的命令
+
+详解：
+这道题是考试中2道4分题的其中之一
+先介绍环境
+首先要求从server r102能够访问到r106这台pc，其结构是：上面（r15、r16以上是公司的一个分部，下面r17、r18、r19以下是公司的另一分部，当中的as14567是运营商）
+r15的公网接口和r16-r19的公网接口通过运营商实现ip的连通性，然后再协商dmvpn，在dmvpn的基础上运行eigrp200这个协议，使得上下的公司内外能够连通
+实现r102访问到r106，以及r107 trace r106且只有r20、r19、r18、106这4跳，即dmvpn的spoke和spoke之间直接形成隧道，而不绕行hub点
+
+要让server r102能够访问106的重点就是要把vpn做通，所以先排vpn故障，vpn故障的三个层面：
+1. 底层网络互通
+2. tunnel接口互通，即在没有调用ipsec保护之前的互通
+3. 挂载ipsec的tunnel保护挂在tunnel接口上，并实现互通
+
+底层网络
+r15的tu source接口是公网接口，应该要能够访问到对面r18的tu source接口，这2个接口要互通，否则肯定无法进行dmvpn协商
+
+tunnel接口互通
+如果tunnel接口的连通性不通，其问题通常在nhrp的配置上
+
+挂载ipsec后的tunnel接口互通
+如果这个时候不通，通常是ipsec配置有问题
+
+在r15上ping r18的s1／0
+ping 145.67.89.30 	#连通性ok！如果这个不通就要排底层和运营商的连通性问题
+这时底层网络ok
+下面看tunnel口的配置
+sh run int tu 0 	#看到tunnel已经挂了ipsec的保护了，同时可以看到nhrp的配置，看起来没有问题
+ip nhrp auth 200key
+ip nhrp map multicast dynamic
+ip nhrp network-id 200 	#network-id一定要写，否则nhrp是不工作的
+在r18上看：
+sh run int tu 0 	＃也挂了ipsce，也可以看到r18的nhrp配置
+ip nhrp auth 200key 	＃这里要注意尾部是否有空格。。putty可能要复制下来放到写字板里
+ip nhrp map 145.67.89.10 200.100.88.1 	＃这里一看就有问题，私网地址在前，公网地址在后，找到错点，修改：先no，再写
+ip nhrp map multicast 200.100.88.1 		＃组播应该写公网地址，所以这里也错，先no再写
+ip nhrp network-id 200
+ip nhrp nhs 145.67.89.10 				＃nhs应该写私网地址，错点，先no后写
+
+至此，用r18 ping 对面的r15的tu口
+再r18上ping：
+ping 200.100.88.1 	＃连通性ok！tunnel接口互通ok！同时也说明ipsec是正确的
+考试时候，如果r18通了，就可以把其配置复制到r17和r19上了，注意改改地址
+
+在r17上
+ping 200.100.88.1 	#ping不通
+sh run int tu 0 	#这里是因为r17的ppp没有弄。。。正常做的话，r17应该是通的
+
+在r18上
+sh ip eigrp nei 	＃看和88.1是否建立了eigrp邻居，已经建立ok
+
+这时想在r102上trace pc106，却发现pc106没有地址。。
+在pc106上：
+sh ip int br 	＃没有地址，发现通过DHCP获取地址
+
+在r18上
+sh run int e0/0 	#看到2个help address，一个是15一个是16
+ping 200.15.15.15 source e0/0 	#测试连通性，不通，怀疑r15是否有r18的e0/0的路由，检查是否宣告了e0/0
+sh ip eigrp int 	#看到e0/0已经宣告了
+到r15上，发现正在和r18各种up and down，这个问题是什么原因？是因为在eigrp里面做了重分发直连，到止了dmvpn翻动
+看到这个现象直接到eigrp200中把重分发直连删掉
+有同学问：没有重分发直连也看到dmvpn翻动，这是什么原因？
+老师：是否有重分发bgp？翻动的原因是r17-r19学习到了到达r15 tu口更好的路由，使其路由没有走serial（物理接口）出去，而是走了tu口
+因此如果做了重分发直连，就会造成翻动
+而不重分发直连，重分发了bgp，而在bgp里面实际上包含了直连路由，则也会造成翻动
+即只要造成不让eigrp路由走物理接口，而走了tu口的这样的逻辑，就会造成dmvpn翻动
+
+知识点：能把路由注入的方式就2种，1种是network宣告，另外一种是重分发
+因此碰到翻动的问题，且有重分发的，就看重分发进来到路由是否包含会影响的路由
+例如重分发直连、重分发bgp
+重分发直连：删掉
+对于重分发bgp：调用route-map，把影响的路由deny掉，让它不要被注入
+
+在r15上删掉重分发直连后，发现log信息已经打出和88.18建立了eigrp邻居关系，且已经稳定，不翻动了
+重新在r18上测试连通性：
+ping 200.15.15.15 source e0/0 	#连通性ok！
+这样的话，106拿地址的请求应该能够到达r15
+106上：
+sh run int e0/0 	#看到dhcp，没有client-id，错误，但是考试时候应该没有这样的问题，因为平台问题。。
+ip dhcp client client-id e0/0
+int e0/0
+shut 
+no shut 	＃看到拿到了地址为200.100.2.200
+
+在102上尝试trace 106:
+trace 200.100.2.200 	#看到unrecognized host or address
+sh ip int br 	#e0/0没有地址。。。也是dhcp，同r18同样问题与思路
+ip dhcp client client-id e0/0
+int e0/0
+shut 
+no shut 	#发现102还没有拿到地址。。
+没有测试sw5、sw6的连通性，以及是否有help address（sh ru int vl 200）
+在sw5上
+sh run int vl 200
+ping 200.15.15.15 soure vl 200 	#连通性ok！通的没有拿到地址，是什么问题？
+
+在r102上：
+sh int e0/0 	＃看mac地址
+在r15上
+sh run | se dhcp 	＃找到dhcp里client-id和mac地址是一样的，但是少了01，找到错点
+修改方法与ts layer2类似，重新刷client-id，在mac前加上01
+重新倒r102上对e0/0 shut再no shut，看到log已经说明拿到地址，排掉错点
+用trace来检查
+trace 200.100.2.200 ＃看到4跳
+
+下面要用107访问106通过4跳，这个一定要建立phase3，因此要检查phase3命令，有缺要补上
+在r15上
+sh run int tu 0 	#phase3对于nhrp server应该要有ip nhrp redirect
+在nhs上有ip nhrp redirect
+在nhrp client(r18和r19)上要有ip nhrp shortcut
+
+r15到r19的vpn还没有测试过
+简洁的办法是在r19上把r18的配置刷过来，然后改地址ip address 200.100.88.19 255.255.255.0
+改好后ping 200.100.88.1 (nhs)，发现不通
+知识点：两边路由都有的情况下ping不通，一定是中间有数据层面的过滤，一般是接口上的acl
+考试经验：在r19的s1/0口上有acl，在实验环境里做在了r13的s1/0口上
+在r13上
+sh run int s1/0
+看到in方向有访问控制列表acl：ip access-group 100 in
+sh ip access-lists 	＃看具体的acl
+看到：
+10 permit udp any any eq isakmp 	#即只放通了udp的isakmp的流量，除此外，还至少要放行2种流量：nhrp地址解析(gre)，esp封装的数据。找到错点。
+修改：
+acc 100 permit gre any any
+acc 100 permit esp any any
+这个时候在r19上ping 200.100.88.1还是不通
+在r19上查看下路由sh ip route，发现r19上缺少路由，这里的原因是和r13没有做chap验证，视频中暂时是关掉chap，考试和练习的时候应该是先做好了chap
+这样r19就应该能够拿到默认路由了，neigh也起来了，也肯定能通了
+在r19上
+ping 200.100.88.1  	#连通性ok！
+这时用r107访问下r106
+sh ip int e0/0
+107是没有地址的，也要做dhcp
+ip dhcp client client-id e0/0 	＃tips：因为help address有r15和r16，所以r15和r16应该都要改dhcp pool的配置
+int e0/0
+shut
+no shut 	＃看到地址拿到了
+
+为什么要放通isakmp、gre、esp协议的数据？老师用wireshark抓包做了几个实验给了说明。这里略掉。
+
+在r107上
+traceroute 200.100.2.200 	＃不通，是因为r15没有关掉水平分割
+在r15上
+int tu 0
+no ip split-horizon eigrp 200
+重新在r107上trace 200.100.2.200，第一次trace是5跳，绕行到了hub，第二次trace就是4跳。
+
+
+
+
+
+
+
+
+
+
+
+
+
+

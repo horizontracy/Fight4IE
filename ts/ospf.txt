@@ -90,10 +90,6 @@ link state id(这条路由的网络号)
 metric值
 且r3和r5上看ospf数据库应该是一样的，因为同在一个area
 
-
-（未完待续。。视频12:45）
-
-
 看到r3的metric值时655xx，因此r5一定做了max－metric
 在r5下
 sh run | se ospf

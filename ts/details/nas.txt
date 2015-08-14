@@ -1,0 +1,128 @@
+ts nat
+题目
+
+错误点
+
+详解和思路
+需求1是r21能够telnet一个域名，跟了一个8008端口，事实上是一个tcp 8008，用telnet来出发这个动作
+r21是在公网上的，而nas server(r108)是私网的nas server。考试通过截图给出这个信息。
+截图中看到dns是8.8.8.8，由dns解析出的域名看得到: nas.homt.net(134.56.78.10, 8008)，其实是r23的公网接口。
+r23是私网的网管设备，内部的网络做了nat地址翻译
+r23上会有nat的预配
+
+需求2是用nas ping一个域名，该域名能够被解析成一个地址，考试时应该是解析成8.8.8.8，且能够ping通
+
+考察的知识点：
+1. nas是通过dhcp拿到地址，dhcp server为r23
+2. nat，r23上的配置正确
+3. dns解析，dns如何指
+
+
+先到r21上
+sh ip dns view default	＃查看是否有dns server
+能够看到dns server是8.8.8.8，同时关注domain lookup is disabled，即域名查找是关闭状态的，因此需要打开域名查找，找到错点
+修改：
+ip domain lookup 	#验证可以再show出来看一下
+
+用telnet来测试
+telnet nas.home.net 8008
+看到：
+尝试解析域名，找到了8.8.8.8，并解析到了正确的地址134.56.78.10 8008（r23的公网接口）；即nat以外的部分（r21和r26）已经ok了
+但是同时看到connection refused by remote host，应该：
+1. 内网确认nas的状态，地址是否正确
+2. r23上看nat的配置，
+
+先看下nat配置，在r21上
+sh run | s nat
+看到一个inside和outside
+ip nat inside source list 1 int e0/2 overload 	#inside -> outside
+ip nat outside source static tcp 192.168.1.1200 80 134.56.78.10 	＃outside -> inside，有错误，错误叙述如下
+
+［题外话］介绍nat
+路由器指定了nat，需要有in和out接口，只在out接口指定nat
+in->out：先找路由查找，再nat
+out->in：先nat，再路由查找
+4个角色：inside local, outside local, inside global, outside global
+思科路由器支持3种nat：
+#inside/outside表示角色，source表示当角色作为源的时候执行翻译，dest表示当角色作为目的地的时候执行翻译
+ip nat inside source 	#inside local -> inside global
+ip nat inside dest		#inside global -> inside local，不常用，用于tcp负载分担，不用考虑
+ip nat outside source	#outside global -> outside local
+
+回到题目，需求匹配是把inside glboal替换为inside local，那么对应的上面的nat是第一种nat，只是方向不对
+不过如果加上static，那么就不分方向了
+写在前面的是inside local，写在后面的事inside global，考试时有这个错点，千万别弄错！
+即先写192.168.1.200 80，后写134.56.78.10 8008
+
+回到r23上
+ip nat outside source static tcp 192.168.1.1200 80 134.56.78.10 	＃outside -> inside，有错误，错误叙述如下
+这个ip nat的错点是：不应该是outside，应该是inside，改掉
+sh run int e0/2 检查下是否正确
+
+搞定nat后去nas上看
+看到nas拿到了.3的地址，和图上不符.200
+查看int e0/0
+在dhcp server r23上看dhcp： sh run | se dhcp 
+发现绑定的mac地址不对，多次重复的错误。修改dhcp pool。清掉绑定。shut, no shut.
+但是nas上没有拿到ip。。其他设备（r24）上会看到地址重复的信息。要到r24上看：
+sh run int e0/0 	#看到e0/0除了配置了.2的地址外，还配了.200的第二地址，找到错点，既可以删掉，也可以修改这个第二地址，删掉即可
+
+删掉后，nas即拿到.200
+
+回到r21重新尝试telnet
+telnet nas.home.net 8008
+敲get（发起http请求）
+然后就可以看到截图效果，需求1ok
+
+需求2是要ping域名，在nas上：
+sh ip dns view default
+看到：dns server是192.168.1.1，即r23，如果r23无法解析域名，会找上一级dns解析
+到r23上看是否有dns server：
+sh ip dns view default
+看到：没有指定dns server，并且domain lookup is disabled（域名解析关闭），找到错点
+修改：
+在r23上：
+ip domain lookup 	＃开启dns
+ip name-server 8.8.8.8
+ip dns server 	#对nas来说是dns server
+
+回到nas上
+ping www.cciecloud.net
+看到：已经做域名解析了，找到了192.168.1.1，但是没有解析到。。。还有错点
+r23能否访问8.8.8.8呢？在r23上：
+ping 8.8.8.8 	＃不通！
+sh ip route 	＃有默认路由，能够到isp的r21
+
+到r21上：
+sh ip bgp 	＃找134.56.78.8，找不到这条路由，很有可能是没有宣告
+sh run | s bgp 	#没有宣告，找到错点
+修改：
+router bgp 12345
+add ipv4
+network 134.56.78.8 mask 255.255.255.252 	＃注意掩码一定要和路由一致，这里是30位的路由，因此是.252
+回到r23上可以验证ping 8.8.8.8，ping通！
+回到nas上ping域名，发现8.8.8.8解析出了，但是没有ping通。。。还有错
+
+因为r23已经能ping通8.8.8.8，错误应该是nat在出去的时候没有被翻译为公网地址
+回到r23上看由内到外的nat：
+sh run | se nat
+看到：
+ip nat inside source list 1 int e0/2 overload 	#inside -> outside
+怀疑list 1
+sh ip acc 1
+看到：
+10 permit 192.168.1.0
+重复的错误点：标准访问控制列表不写反掩码，即精准比配
+修改：加上反掩码0.0.0.255
+
+问题ok
+
+
+
+
+
+
+
+
+
+

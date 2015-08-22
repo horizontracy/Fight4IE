@@ -1,0 +1,26 @@
+诊断注意点总结
+1. pc有1台是老诊断，pc有2台是新诊断
+1）老诊断
+	i) 查看sw3: sh ip int br
+	ii)查看host1 mac address
+2）新诊断
+	i) 查看sw3: sh spanning-tree summary
+	ii)sw3: sh vtp password
+
+2. r15有重分发直连是老诊断，r16有重分发直连是新诊断
+1）老诊断
+	i) r15
+	ii)r15把物理口移出eigrp：r15 exclude the prefix of int e0/0 into eigrp
+
+2）新诊断
+	i) r16
+	ii)r16 increase the mask of r16 int e0/0
+
+3. 拖图题，第一问选项见过的是老诊断，选项没有见过的是新诊断
+1）老诊断
+	i) 
+	ii)Asymmetric routing with unicast RPF
+
+2）新诊断
+	i) 没有答案
+	ii)一共6个选项，分2组，1组带loose关键字，1组带strict关键字；在strict组中选带destination关键字的

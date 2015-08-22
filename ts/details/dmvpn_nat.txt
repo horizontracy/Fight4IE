@@ -1,0 +1,90 @@
+ts dmvpn nat
+题目
+
+错误点
+
+详解：
+还是排dmvpn的3个步骤：
+确保底层ok，r24和r7的公网接口是否通
+不挂载ipsec保护的tunnel口ping通
+挂上ipsec保护
+
+在r24上
+ping 125.45.67.22 	#不通
+先搞定底层
+
+在r23上
+ping 125.45.67.22 	＃网关ping不同
+上一题中已经知道，r23到isp的链路是ok的
+
+到r7上
+sh ip route 	＃有默认路由指向运营商，下一跳地址为124.45.67.21，这里是不对的，应该走125，指错了
+修改默认路由：
+sh ip route 0.0.0.0 0.0.0.0 125.45.67.21 	#改默认路由要先no掉重写，不可覆盖
+到r23上检查，还是ping不通r7
+
+思路：检查宣告
+上一题中，r21已经宣告了朝向r23的网段
+这里到r3上查看是否宣告了r7的公网接口：
+sh ip bgp 	＃找125.45.67.20网段的路由，发现没有，找到错点，是r3上没有做朝向r7的网段的network
+（技巧：这里宣告的地址可以直接看r3朝向r7的直连路由的地址和掩码，用sh ip route connected）
+修改：
+router b 12345
+add ipv4
+network 125.45.67.20 mask 255.255.255.252
+检查bgp路由表已经有了.20的路由
+
+回到r23上ping 125.45.67.22通了。
+到r24上ping 125.45.67.22通了。底层ok。
+
+下面看tu接口的配置
+在r24上：
+sh run int tu 10
+看到配置没有问题
+
+到r7上看tu口配置：
+sh run int tu 10
+配置也没有问题
+
+在r7上尝试在tu口上pingr24:
+ping 172.247.247.2 	#不通
+思路：到tu10中去掉ipsec保护再尝试
+
+分别在r7和r24上去掉ipsec
+int tu 10
+no tunnel protection ipsec profile CCIE
+
+重新尝试tunnel口ping还是不通。
+
+怀疑nhrp配置有问题。
+
+在r7上看nhrp映射：
+sh ip nhrp 
+发现nhrp映射也已经学到了对面的.2，这时候有log说tu口的ospf建立了邻居，再尝试ping，ping通。刚才是还没有刷新。
+
+即说明没有加上ipsec保护时，tunnel口配置ok。因此问题应该在ipsec上。
+
+在r7和r24上：
+sh run | s crypto 	#检查ipsec专用
+比对第一阶段：isakmp
+发现r24陪了group 16，而r7没有配group，发现错点，加上group 16。
+发现r7上有key是ccierock$，而r24上没有写key，发现错点，加上key；
+同时，r7的key指的地址是r24内网地址192.168.1.2，应该指向网关公网的地址，找到另一错点。
+考试时，如果记不得了，直接写0.0.0.0
+
+再比较第二阶段
+发现配的加密方式是ah-md5-hmac，［知识点］这种加密方式和nat不共存。找到错点，换为esp-，比如esp-aes esp-des，视频中用的是esp-des
+修改方法：更换加密方式，保证2边是一样的即可
+另外，发现r24比r7多一条命令：
+no crypto ipsec nat-transparency udp-encapsulation 	#ipsec允许udp封装穿越nat，no表示关闭了该功能，找到错点，打开该功能。该功能默认是开启的。
+
+重新在r24和r7上挂载上ipsec，尝试ping：
+int tu 10
+tu protection ipsec profile CCIE
+ping 172.247.247.247 	#ping通
+ospf邻居也建立成功
+
+在r24上查看ospf路由，已经能够看到server r100的路由
+
+到pc109上尝试ping r100，发现ping通。
+

@@ -1,0 +1,22 @@
+排除其他注意点总结
+1. mpls中104 trace 105始终走r8
+现象：在r5上能够看到去pc105的路由是incomplete，走r8的路由是igp
+原因：
+1）r7上有as-set，删掉
+2）r7上ospf中有汇总了去pc105的路由，并重分发进bgp，使得bgp中走r7的路由变成了'?'->incomplete
+
+2. ppp中r17拿不到地址
+原因：
+1）没有ip address negotiate，拿不到地址，补上
+2）有no peer neighbor-route，删掉
+
+3. nas中能够ping通，但是telnet不到nas
+原因：nas没有开http server，修改方法是ip http server
+
+4. r7上有ip dhcp snoopy，要在sw2和sw1朝向dhcp server的物理接口上配ip dhcp snoopy 
+
+5. ipv6：有接口挂了acl拒绝路tcp，如何放开？
+
+6. mpls r7和r8改起源？
+
+7. 

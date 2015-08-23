@@ -53,3 +53,18 @@
 17. r2，r3，r6，r7
 	要在vrf下和BB建立ebgp邻居
 	只在INET下prefix 123 out
+
+18. 考场中r10可能有61.61.61.61的路由，需要干掉，其他PE也注意检查后
+	用prefix-list：
+		ip prefix acl61 deny 61.61.61.61/32
+		route b 34567
+			add ipv4
+				nei 201.34.1.1 prefix acl61 in
+
+11. 战报说被tr的话，很可能是PE的bgp中network了loopback路由
+	PE和bb建立ebgp邻居，不network路由
+
+12. r20的10网段没有配ip地址
+	sh ip int br 可以看到loopback1和loopback2没有地址，一定记得配上
+	忘记配的话会有log提示吗？
+	ps：记得用r12的e0/0 ping r20身后点10网段，如果不通，而ping 1.2.3.4通，那么就要想想是不是没有配ip

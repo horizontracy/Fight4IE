@@ -1,22 +1,93 @@
 排除其他注意点总结
 1. mpls中104 trace 105始终走r8
-现象：在r5上能够看到去pc105的路由是incomplete，走r8的路由是igp
-原因：
-1）r7上有as-set，删掉
-2）r7上ospf中有汇总了去pc105的路由，并重分发进bgp，使得bgp中走r7的路由变成了'?'->incomplete
+	现象：在r5上能够看到去pc105的路由是incomplete，走r8的路由是igp
+	1）r7上有as-set，删掉
+	2）r7上ospf中有汇总了去pc105的路由，并重分发进bgp，使得bgp中走r7的路由变成了'?'->incomplete
 
 2. ppp中r17拿不到地址
-原因：
-1）没有ip address negotiate，拿不到地址，补上
-2）有no peer neighbor-route，删掉
+	1）没有ip address negotiate，拿不到地址，补上
+	2）有no peer neighbor-route，删掉
 
 3. nas中能够ping通，但是telnet不到nas
-原因：nas没有开http server，修改方法是ip http server
+	原因是nas没有开http server，修改方法是ip http server
 
-4. r7上有ip dhcp snoopy，要在sw2和sw1朝向dhcp server的物理接口上配ip dhcp snoopy 
+4. r7上有ip dhcp snoopy，来自国外战报
+	要在sw2和sw1朝向dhcp server的物理接口上配ip dhcp snoopy 
 
-5. ipv6：有接口挂了acl拒绝路tcp，如何放开？
+5. ipv6：有接口挂了acl拒绝tcp
+	关了tcp，bgp的邻居都起不来，所以tcp一定要打开
 
-6. mpls r7和r8改起源？
+6. mpls r7和r8改起源，就是as-set
+	看到r7、r8上的汇总中的as-set，删掉
 
-7. 
+7. ospf下改了分发列表还是不分担路由
+	可能是ospf下的max path为1，可以通过sh ip protocol查看
+	修改方法是类似bgp的，加上maximum-path 2
+
+8. r15可能有域名问题
+
+9. server2或者pc106、pc107的tunnel口配了timeout
+	练习环境中无法看到现象，考试中如果其他配置无误依然拿不到ip，修改timeout
+	命令是：ip domain time-out 1
+
+10. r21/r22朝向r26挂的route-map的方向应该是in，r4/r6朝向r12挂多route-map的方向是out
+
+11. ospf中r1和r2有point-to-point的问题，即网络类型不对，应该配为broadcast
+	练习环境中无法复现这个现象
+
+12. r22上配r5 next-hop-self可能要用peer-group来配
+	例如：neighbor iBGP next-hop-self
+
+13. r21和r22上如果看到前缀列表是用的le，要改成ge
+	例如：194.1.1.0/1 le 16，应该修改为ge 16
+
+14. 设备可以通过reload恢复默认配置
+
+15. 
+
+最新8-23错点
+TS:
+1.DHCP：sw2上acl
+	练习环境中没有见过
+
+2.PPP：17上是空的，照着18敲
+	练习环境中没有见过	
+
+3.OSPF:R22route-id写错
+	看是否用的是loopback口作为router-id
+
+4.EIGRP：12 passive与14相连的接口
+
+5.BGP：
+	1) R2上与R1相连借口没敲mpls ip
+		现象是没有路由？
+	
+	2) R5有个对4和6的route-map写的下一跳是125.45.67.45
+		现象是？
+
+	3) R21上有个bgp default local-pref 101
+		在练习环境中是r21上有route-map匹配了设local-pref为99
+		修改思路是？
+
+6.IPV6：R22和R25上建V6邻居的命令他ipv4了，复制到ipv6下即可，两边都写错
+	练习环境中没有见过
+	练习时是ipv6的邻居关系用ipv4地址建立，需要写route-map设下一跳指向ipv6全球单播地址，并挂在ipv6的s口邻居的出方向上
+
+7.DMVPN:R14上添上ip acc per esp any any，R15上写no next-hop-self
+	练习中是r13上需要放行esp和gre流量
+	r15写no next-hop-self没有见过，是什么作用，什么意思？
+
+8.MPLS VPN：
+	1) 104上e0/0写的ip add dhcp，而R9上是绑定了地址的，一开始没想起来，排了很久，到后面遇到一样的错才想起来，改成ip add dhcp client e0/0
+		练习的解法是直接配ip dhcp client client-id e0/0，只要sw3能拿到默认路由，配了ip helper-address就按照练习中的来做
+
+	2) R7接口下少个nat
+
+	3) R4和R6加mpls ip和cost 21
+
+9.IPSEC VPN over NAT:
+	1) 21上写了一大段acl，有deny地址的，有permit协议的，发现没有permit地址的，直接加了一条ip acc per ip any any。
+	21上有acl是正常的，这是bgp选路的配置才对吧
+
+10.NAS：NAS没地址，错点跟MPLS那边一样，绑定借口就好了。
+
